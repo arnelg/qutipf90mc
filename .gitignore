@@ -7,3 +7,4 @@ fort.8
 *.pyf
 *.pyc
 ./src/old/
+*.sw*

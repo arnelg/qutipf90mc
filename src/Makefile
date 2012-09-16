@@ -1,4 +1,4 @@
-TARGET = f90mcsolve
+TARGET = qutraj_run
 #TARGET = f2pytest
 
 F90 = gfortran
@@ -8,7 +8,8 @@ LDFLAGS =
 PYFFLAGS = --overwrite-signature
 F2PYBUILDFLAGS = -DF2PY_REPORT_ON_ARRAY_COPY=1
 
-MODS = solver
+MODS = qutraj_general
+MODS += qutraj_solver
 
 OBJS = $(MODS:=.o)
 SRCS += $(MODS:=.f90)
@@ -54,5 +55,7 @@ clean:
 # Dependencies
 #
 
-f90mcsolve.o: f90mcsolve.f90 solver.o 
-solver.o: solver.f90
+qutraj_run.o: qutraj_run.f90 qutraj_solver.o qutraj_general.o
+qutraj_solver.o: qutraj_solver.f90 qutraj_general.o
+qutraj_general.o: qutraj_general.f90
+

@@ -1,37 +1,12 @@
-module solver
+module qutraj_solver
 
-  !
-  ! Constants
-  !
+  use qutraj_general
 
-  integer, parameter :: sp = kind(1.0e0) ! single precision
-  integer, parameter :: dp = kind(1.0d0) ! double precision
-  integer, parameter :: wp = dp ! working precision
-  integer, parameter :: wpc = wp ! working precision complex numbers
-  integer, parameter :: blas_error_param    = -23
-
-  ! small and large number
-  real, parameter :: epsi=5*epsilon(1.0)
-  real, parameter :: huge1=0.2*huge(1.0)
+  implicit none
 
   !
   ! Types
   !
-
-  type zspmat
-    ! Complex double precicion sparse matrix type
-    ! m = number of cols, k = number of rows
-    integer :: m,k
-    ! fida should be set to 'CSR' (Compressed Row Storage)
-    character*5 :: fida
-    character*11 :: descra
-    integer, dimension(10) :: infoa
-    complex(kind=DP), pointer, dimension(:) :: a
-    ! Only CSR routines implemented, i.e. ia2, bp1, bp2 not used
-    ! notice: pe(i) = pb(i+1)-1
-    integer, pointer, dimension(:) :: ia1,pb,pe
-    !integer, pointer, dimension(:) :: ia2,bp1,bp2
-  end type
 
   type state
     ! States are dense one dimensional vectors
@@ -98,7 +73,7 @@ module solver
     this%n = n
     allocate(this%x(n),stat=istat)
     if (istat.ne.0) then
-      write(*,*) "state_init: could not allocate, istat=",istat
+      call fatal_error("state_init: could not allocate.",istat)
     endif
   end subroutine
   subroutine state_init2(this,n,val)
@@ -110,6 +85,7 @@ module solver
   end subroutine
 
   subroutine operat_init(this,nnz)
+    ! todo: add special support for Hermitian matrix
     type(operat), intent(out) :: this
     integer, intent(in) :: nnz
     integer :: istat
@@ -119,7 +95,7 @@ module solver
     allocate(this%pb(nnz),stat=istat)
     allocate(this%pe(nnz),stat=istat)
     if (istat.ne.0) then
-      write(*,*) "operat_init: could not allocate, istat=",istat
+      call fatal_error("operat_init: could not allocate.",istat)
     endif
     ! Set default parameters
     this%fida = 'CSR'
@@ -128,6 +104,7 @@ module solver
     this%typem = 'G'
     this%part = 'B'
   end subroutine
+
   subroutine operat_init2(this,nnz,val,col,ptr,nrows,ncols)
     type(operat), intent(out) :: this
     complex, intent(in), dimension(:) :: val
@@ -135,6 +112,9 @@ module solver
     integer, intent(in) :: nnz,nrows,ncols
     integer :: i
     call operat_init(this,nnz)
+    if (nrows.ne.ncols) then
+      call fatal_error("operat_init2: nrows should equal ncols for operator type.")
+    endif
     this%m = ncols
     this%k = nrows
     this%a = val
@@ -160,11 +140,12 @@ module solver
       write(*,*) "operate_state_mult: state has wrong size:",psi%n
       write(*,*) "should be:",work%n
       write(*,*) "have you properly initialized 'work' state?"
+      call fatal_error
       return
     endif
     call sparse_mv_mult(oper,psi%x,work%x,ierr)
     if (ierr.ne.0) then
-      write(*,*) "operate_state_mult: error, ierr=",ierr
+      call error("operate_state_mult: error",ierr)
     endif
     operat_state_mult = work
   end function
