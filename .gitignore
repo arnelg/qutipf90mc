@@ -1,0 +1,9 @@
+*~
+*.out
+fort.8
+*.mod
+*.o
+*.so
+*.pyf
+*.pyc
+./src/old/
