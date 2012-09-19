@@ -20,6 +20,9 @@ module qutraj_general
   real, parameter :: epsi=5*epsilon(1.0)
   real, parameter :: huge1=0.2*huge(1.0)
 
+  ! imaginary unit
+  complex(wp), parameter :: ii = (0._wp,1._wp)
+
   contains
 
   subroutine error(errormsg,ierror)

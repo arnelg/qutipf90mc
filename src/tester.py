@@ -10,4 +10,8 @@ a = sigmax()
 qt.qutraj_run.init_psi0(psi0d,size(psi0d))
 qt.qutraj_run.init_hamiltonian(a.data.data,a.data.indices,a.data.indptr[0:2],a.data.nnz,a.data.shape[0],a.data.shape[1])
 
+qt.qutraj_run.init_odedata(1,1e-5,1e-5,mf=10)
+
 qt.qutraj_run.evolve()
+
+qt.qutraj_run.finalize_all()

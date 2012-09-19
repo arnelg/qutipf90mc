@@ -1,18 +1,28 @@
 TARGET = qutraj_run
-#TARGET = f2pytest
 
 F90 = gfortran
-F90FLAGS = -O3
-LDFLAGS =
+F90FLAGS =
+LDFLAGS = -lblas
+F77 = gfortran
+F77FLAGS =
 
 PYFFLAGS = --overwrite-signature
 F2PYBUILDFLAGS = -DF2PY_REPORT_ON_ARRAY_COPY=1
 
+ZVODE = zvode zcopy zgbfa zgbsl zgefa zgesl
+ZVODE_OBJS = $(ZVODE:=.o)
+ZVODE_SRCS = $(ZVODE:=.f)
+
 MODS = qutraj_general
+MODS += qutraj_hilbert
 MODS += qutraj_solver
 
 OBJS = $(MODS:=.o)
 SRCS += $(MODS:=.f90)
+
+#MODS += $(ZVODE)
+#OBJS += $(ZVODE_OBJS)
+#SRCS += $(ZVODE_SRCS)
 
 .PHONY: all clean
 
@@ -22,6 +32,7 @@ all:
 	@echo make f2pybuild - compiles the module and all dependencies.
 
 pyf:
+	cp $(TARGET:=.pyf) $(TARGET:=.pyf.backup)
 	f2py -m $(TARGET) -h $(TARGET:=.pyf) $(PYFFLAGS) $(TARGET:=.f90)
 	
 #
@@ -40,7 +51,7 @@ clean:
 	$(RM) *.so
 
 
-.SUFFIXES: $(SUFFIXES) .f90
+.SUFFIXES: $(SUFFIXES) .f90 .f
 
 # Need to override standard rule for mod files since make thinks they are modula-2 files
 %.o: %.mod
@@ -50,12 +61,15 @@ clean:
 	$(F90) $(F90FLAGS) -c $< 
 .f90.mod:
 	$(F90) $(F90FLAGS) -c $< 
+.f.o:
+	$(F77) $(F77FLAGS) -c $< 
 
 #
 # Dependencies
 #
 
 qutraj_run.o: qutraj_run.f90 qutraj_solver.o qutraj_general.o
-qutraj_solver.o: qutraj_solver.f90 qutraj_general.o
+qutraj_solver.o: qutraj_solver.f90 qutraj_hilbert.o qutraj_general.o
+qutraj_hilbert.o: qutraj_hilbert.f90 qutraj_general.o
 qutraj_general.o: qutraj_general.f90
 
