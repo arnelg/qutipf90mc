@@ -32,15 +32,20 @@ all:
 	@echo make f2pybuild - compiles the module and all dependencies.
 
 pyf:
-	cp $(TARGET:=.pyf) $(TARGET:=.pyf.backup)
+ifneq "$(wildcard qutraj_run.pyf )" ""
+	-cp $(TARGET:=.pyf) $(TARGET:=.pyf.backup)
+endif
 	f2py -m $(TARGET) -h $(TARGET:=.pyf) $(PYFFLAGS) $(TARGET:=.f90)
-	
+
 #
-# need to manually edit .pyf file to remove private subroutines.
+# need to manually edit .pyf file to remove private subroutines,
+# and give default values for optional arguments
 #
 
 f2pybuild: $(OBJS)
 	f2py $(F2PYBUILDFLAGS) -c $(TARGET:=.pyf) $(TARGET:=.f90) $(SRCS)
+
+$(OBJS): $(ZVODE_OBJS)
 
 #f90mcsolve: $(OBJS) f90mcsolve.o
 	#$(F90) $(F90FLAGS) -c $(OBJS) $(@:=.o)
