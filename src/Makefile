@@ -43,12 +43,9 @@ endif
 #
 
 f2pybuild: $(OBJS)
-	f2py $(F2PYBUILDFLAGS) -c $(TARGET:=.pyf) $(TARGET:=.f90) $(SRCS)
+	f2py $(F2PYBUILDFLAGS) -c $(TARGET:=.pyf) $(TARGET:=.f90) $(SRCS) $(ZVODE_OBJS) $(LDFLAGS)
 
 $(OBJS): $(ZVODE_OBJS)
-
-#f90mcsolve: $(OBJS) f90mcsolve.o
-	#$(F90) $(F90FLAGS) -c $(OBJS) $(@:=.o)
 
 clean:
 	$(RM) *.o
@@ -67,14 +64,14 @@ clean:
 .f90.mod:
 	$(F90) $(F90FLAGS) -c $< 
 .f.o:
-	$(F77) $(F77FLAGS) -c $< 
+	$(F77) $(F77FLAGS) -c -fPIC $< 
 
 #
 # Dependencies
 #
 
-qutraj_run.o: qutraj_run.f90 qutraj_solver.o qutraj_general.o
-qutraj_solver.o: qutraj_solver.f90 qutraj_hilbert.o qutraj_general.o
-qutraj_hilbert.o: qutraj_hilbert.f90 qutraj_general.o
-qutraj_general.o: qutraj_general.f90
+qutraj_run: qutraj_run.f90 qutraj_solver.o qutraj_general.o
+qutraj_solver: qutraj_solver.f90 qutraj_hilbert.o qutraj_general.o zvode.o
+qutraj_hilbert: qutraj_hilbert.f90 qutraj_general.o
+qutraj_general: qutraj_general.f90
 

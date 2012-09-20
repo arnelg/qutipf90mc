@@ -5,6 +5,10 @@ module qutraj_solver
 
   implicit none
 
+  ! Defines the RHS, to be sent to zvode
+  external rhs
+  external dummy_jac
+
   !
   ! Types
   !
@@ -37,7 +41,8 @@ module qutraj_solver
   ! (Public) Data defining the problem
   !
 
-  type(state) :: psi0
+  real(sp), allocatable :: tlist(:)
+  type(state) :: psi0,psi
   type(operat) :: hamilt
   type(odeoptions) :: ode
 
@@ -45,7 +50,13 @@ module qutraj_solver
   ! Interfaces
   !
 
+  interface new
+    module procedure sp_array_init
+    module procedure sp_array_init2
+  end interface
+
   interface finalize
+    module procedure sp_array_finalize
     module procedure odeoptions_finalize
   end interface
 
@@ -59,6 +70,31 @@ module qutraj_solver
   ! Initializers and finalizers
   !
 
+  subroutine sp_array_init(this,n)
+    real(sp), allocatable, intent(inout) :: this(:)
+    integer, intent(in) :: n
+    integer :: istat
+    allocate(this(n),stat=istat)
+    if (istat.ne.0) then
+      call fatal_error("sp_array_init: could not allocate.",istat)
+    endif
+  end subroutine
+  subroutine sp_array_init2(this,val)
+    real(sp), allocatable, intent(inout) :: this(:)
+    real(sp), intent(in), dimension(:) :: val
+    call sp_array_init(this,size(val))
+    this = val
+  end subroutine
+
+  subroutine sp_array_finalize(this)
+    real(sp), allocatable, intent(inout) :: this
+    integer :: istat
+    deallocate(this,stat=istat)
+    if (istat.ne.0) then
+      call error("sp_array_finalize: could not deallocate.",istat)
+    endif
+  end subroutine
+
   subroutine odeoptions_finalize(this)
     type(odeoptions), intent(inout) :: this
     integer :: istat
@@ -68,4 +104,48 @@ module qutraj_solver
     endif
   end subroutine
 
+  !
+  ! Evolution subs
+  !
+
+  subroutine nojump(y,t,tout,istate)
+    double complex, intent(inout) :: y(:)
+    double precision, intent(inout) :: t
+    double precision, intent(in) :: tout
+    integer, intent(inout) :: istate
+    integer :: istat
+
+    call zvode(rhs,ode%neq,y,t,tout,ode%itol,ode%rtol,ode%atol,&
+      ode%itask,istate,ode%iopt,ode%zwork,ode%lzw,ode%rwork,ode%lrw,&
+      ode%iwork,ode%liw,dummy_jac,ode%mf,ode%rpar,ode%ipar)
+  end subroutine
+
 end module
+
+!
+! RHS for zvode
+!
+
+subroutine rhs (neq, t, y, ydot, rpar, ipar)
+  use qutraj_hilbert
+  use qutraj_solver
+  double complex y(neq), ydot(neq),rpar
+  double precision t
+  integer ipar,neq
+  !type(state) :: dpsi
+  !ydot(1) = y(1)
+  psi%x = y
+  psi = (-ii)*(hamilt*psi)
+  !write(*,*) psi%x
+  ydot = psi%x
+end subroutine
+
+subroutine dummy_jac (neq, t, y, ml, mu, pd, nrpd, rpar, ipar)
+  double complex y(neq), pd(nrpd,neq), rpar
+  double precision t
+  integer neq,ml,mu,nrpd,ipar
+  return
+end
+
+
+

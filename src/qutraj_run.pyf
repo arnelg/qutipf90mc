@@ -5,6 +5,10 @@ python module qutraj_run ! in
     interface  ! in :qutraj_run
         module qutraj_run ! in :qutraj_run:qutraj_run.f90
             use qutraj_solver
+            subroutine init_tlist(val,n) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+                real(kind=sp) dimension(n),intent(in) :: val
+                integer, optional,intent(in),check(len(val)>=n),depend(val) :: n=len(val)
+            end subroutine init_tlist
             subroutine init_psi0(val,n) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 complex dimension(n),intent(in) :: val
                 integer, optional,intent(in),check(len(val)>=n),depend(val) :: n=len(val)
@@ -35,26 +39,6 @@ python module qutraj_run ! in
             subroutine evolve ! in :qutraj_run:qutraj_run.f90:qutraj_run
             end subroutine evolve
         end module qutraj_run
-        subroutine rhs(neq,t,y,ydot,rpar,ipar) ! in :qutraj_run:qutraj_run.f90
-            integer, optional,check(len(y)>=neq),depend(y) :: neq=len(y)
-            double precision :: t
-            double complex dimension(neq) :: y
-            double complex dimension(neq),depend(neq) :: ydot
-            double complex :: rpar
-            integer :: ipar
-        end subroutine rhs
-        subroutine dummy_jac(neq,t,y,ml,mu,pd,nrpd,rpar,ipar) ! in :qutraj_run:qutraj_run.f90
-            integer, optional,check(len(y)>=neq),depend(y) :: neq=len(y)
-            double precision :: t
-            double complex dimension(neq) :: y
-            integer :: ml
-            integer :: mu
-            double complex dimension(nrpd,neq),depend(neq) :: pd
-            integer, optional,check(shape(pd,0)==nrpd),depend(pd) :: nrpd=shape(pd,0)
-            double complex :: rpar
-            integer :: ipar
-        end subroutine dummy_jac
-    end interface 
 end python module qutraj_run
 
 ! This file was auto-generated with f2py (version:2).

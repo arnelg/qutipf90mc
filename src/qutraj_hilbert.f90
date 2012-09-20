@@ -96,11 +96,10 @@ module qutraj_hilbert
       call fatal_error("state_init: could not allocate.",istat)
     endif
   end subroutine
-  subroutine state_init2(this,n,val)
+  subroutine state_init2(this,val)
     type(state), intent(out) :: this
-    integer, intent(in) :: n
     complex, intent(in), dimension(:) :: val
-    call state_init(this,n)
+    call state_init(this,size(val))
     this%x = val
   end subroutine
 
@@ -169,47 +168,39 @@ module qutraj_hilbert
   !
 
   !type(state) function state_state_eq(fi,psi)
-  !  ! |fi> = |psi>
-  !  type(state), intent(out) :: fi
-  !  type(state), intent(in) :: psi
-  !  call new(fi,size(fi%x),psi%x)
-  !  state_state_eq = fi
+  !  type(state), intent(in) :: fi,psi
+  !  work%x = psi%x
+  !  state_state_eq = work
   !end function
 
   type(state) function state_state_add(fi,psi)
     ! |fi> + |psi>
     type(state), intent(in) :: fi
     type(state), intent(in) :: psi
-    type(state) :: tmp
-    call new(tmp,size(psi%x),fi%x+psi%x)
-    state_state_add = tmp
+    work%x = fi%x+psi%x
+    state_state_add = work
   end function
 
   type(state) function state_state_sub(fi,psi)
     ! |fi> + |psi>
     type(state), intent(in) :: fi
     type(state), intent(in) :: psi
-    type(state) :: tmp
-    call new(tmp,size(psi%x),fi%x-psi%x)
-    state_state_sub = tmp
+    work%x = fi%x-psi%x
+    state_state_sub = work
   end function
 
   type(state) function real_state_mult(c,psi)
     type(state), intent(in) :: psi
     real(wp), intent(in) :: c
-    type(state) :: tmp
-    call new(tmp,size(psi%x),c*psi%x)
-    real_state_mult = tmp
-    !real_state_mult%x = c*psi%x
+    work%x = c*psi%x
+    real_state_mult = work
   end function
 
   type(state) function complex_state_mult(c,psi)
     type(state), intent(in) :: psi
     complex(wp), intent(in) :: c
-    type(state) :: tmp
-    call new(tmp,size(psi%x),c*psi%x)
-    complex_state_mult = tmp
-    !complex_state_mult%x = c*psi%x
+    work%x = c*psi%x
+    complex_state_mult = work
   end function
 
   !
@@ -219,6 +210,7 @@ module qutraj_hilbert
   type(state) function operat_state_mult(oper,psi)
     type(operat), intent(in) :: oper
     type(state), intent(in) :: psi
+    type(state) :: work
     integer :: ierr
 
     if (psi%n.ne.work%n) then

@@ -5,17 +5,24 @@ module qutraj_run
   implicit none
 
   ! Defines the RHS, to be sent to zvode
-  external rhs
-  external dummy_jac
+  !external rhs
+  !external dummy_jac
 
   contains
 
   ! Initialize problem
 
+  subroutine init_tlist(val,n)
+    real(sp), intent(in), dimension(n) :: val
+    integer, intent(in) :: n
+    call new(tlist,val)
+  end subroutine
+
   subroutine init_psi0(val,n)
     complex, intent(in), dimension(n) :: val
     integer, intent(in) :: n
-    call new(psi0,n,val)
+    call new(psi0,val)
+    call new(psi,n)
     call new(work,n)
   end subroutine
 
@@ -104,6 +111,8 @@ module qutraj_run
 
   subroutine finalize_all
     !deallocate(ode%zwork,ode%rwork,ode%iwork,ode%atol,ode%rtol)
+    deallocate(tlist)
+    !call finalize(tlist)
     call finalize(psi0)
     call finalize(work)
     call finalize(hamilt)
@@ -113,58 +122,43 @@ module qutraj_run
   ! Evolution
 
   subroutine evolve
-    type(state) :: psi
     double precision :: t, tout
     double complex, allocatable :: y(:)
     integer :: istate
-    integer :: istat
+    integer :: istat,i
+
+    psi = hamilt*psi0
+    write(*,*) psi%x
+    write(*,*) "--------------"
 
     allocate(y(ode%neq),stat=istat)
     if (istat.ne.0) then
       call error("evolve: could not allocate.",istat)
     endif
 
-    ! Initial values
-    y = psi0%x
-    ! Initial value of indep. variable
-    t = 0.
-    ! Solution wanted at
-    tout = 1.
-    ! first call to zvode
-    istate = 1
-
     !write(*,*) ode%neq,ode%itol,ode%rtol,ode%atol
     !write(*,*) ode%itask,istate,ode%iopt
     !write(*,*) ode%lzw,ode%lrw,ode%liw
     !write(*,*) ode%mf
 
-    call zvode(rhs,ode%neq,y,t,tout,ode%itol,ode%rtol,ode%atol,&
-      ode%itask,istate,ode%iopt,ode%zwork,ode%lzw,ode%rwork,ode%lrw,&
-      ode%iwork,ode%liw,dummy_jac,ode%mf,ode%rpar,ode%ipar)
+    ! first call to zvode
+    istate = 1
+    ! Initial values
+    y = psi0%x
 
-    write(*,*) t, y(1)
-    if (istate.lt.0) then
-      write(*,*) "error: istate=",istate
-      stop
-    endif
+    do i=1,size(tlist)-1
+      ! Initial value of indep. variable
+      t = tlist(i)
+      ! Solution wanted at
+      tout = tlist(i+1)
+
+      call nojump(y,t,tout,istate)
+      write(*,*) t, y
+      if (istate.lt.0) then
+        write(*,*) "error: istate=",istate
+        stop
+      endif
+    enddo
   end subroutine
 
 end module
-
-subroutine rhs (neq, t, y, ydot, rpar, ipar)
-  double complex y(neq), ydot(neq),rpar
-  double precision t
-  integer ipar
-  type(state) :: dpsi
-  !ydot(1) = sin(t)*(1.,0.)
-  !ydot(1) = y(1)
-  dpsi = -ii*(hamilt*psi)
-  ydot = dpsi%x
-end subroutine
-
-subroutine dummy_jac (neq, t, y, ml, mu, pd, nrpd, rpar, ipar)
-  double complex y(neq), pd(nrpd,neq), rpar
-  double precision t
-  return
-end
-
