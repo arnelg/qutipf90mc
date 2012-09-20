@@ -8,11 +8,11 @@ module qutraj_hilbert
   ! Types
   !
 
-  type state
-    ! States are dense one dimensional vectors
-    integer :: n
-    complex(wp), allocatable :: x(:)
-  end type
+  !type state
+  !  ! States are dense one dimensional vectors
+  !  integer :: n
+  !  complex(wp), allocatable :: x(:)
+  !end type
 
   type operat
     ! Operators are represented as spare matrices
@@ -35,11 +35,14 @@ module qutraj_hilbert
     ! values
     complex(wp), allocatable :: a(:)
     integer, allocatable :: ia1(:),pb(:),pe(:)
+    !complex(wp), pointer :: a(:)
+    !integer, pointer :: ia1(:),pb(:),pe(:)
     ! notice: pe(i) = pb(i+1)-1
   end type
 
   ! work variables
-  type(state) :: work
+  !type(state) :: work
+  complex(wp), allocatable, target :: work(:)
 
 
   !
@@ -62,17 +65,17 @@ module qutraj_hilbert
   !  module procedure state_state_eq
   !end interface
 
-  interface operator(+)
-    module procedure state_state_add
-  end interface
+  !interface operator(+)
+  !  module procedure state_state_add
+  !end interface
 
-  interface operator(-)
-    module procedure state_state_sub
-  end interface
+  !interface operator(-)
+  !  module procedure state_state_sub
+  !end interface
 
   interface operator(*)
-    module procedure real_state_mult
-    module procedure complex_state_mult
+    !module procedure real_state_mult
+    !module procedure complex_state_mult
     module procedure operat_state_mult
   end interface
 
@@ -87,26 +90,30 @@ module qutraj_hilbert
   !
 
   subroutine state_init(this,n)
-    type(state), intent(out) :: this
+    !type(state), intent(out) :: this
+    complex(wp), allocatable :: this(:)
     integer, intent(in) :: n
     integer :: istat
-    this%n = n
-    allocate(this%x(n),stat=istat)
+    !this%n = n
+    !allocate(this%x(n),stat=istat)
+    allocate(this(n),stat=istat)
     if (istat.ne.0) then
       call fatal_error("state_init: could not allocate.",istat)
     endif
   end subroutine
   subroutine state_init2(this,val)
-    type(state), intent(out) :: this
+    !type(state), intent(out) :: this
+    complex(wp), allocatable :: this(:)
     complex, intent(in), dimension(:) :: val
     call state_init(this,size(val))
-    this%x = val
+    this = val
   end subroutine
 
   subroutine state_finalize(this)
-    type(state), intent(inout) :: this
+    !type(state), intent(inout) :: this
+    complex(wp), allocatable :: this(:)
     integer :: istat
-    deallocate(this%x,stat=istat)
+    deallocate(this,stat=istat)
     if (istat.ne.0) then
       call error("state_finalize: could not deallocate.",istat)
     endif
@@ -127,7 +134,7 @@ module qutraj_hilbert
     endif
     ! Set default parameters
     this%fida = 'CSR'
-    this%base = 0 ! comp. with python
+    this%base = 1 ! fortran base
     this%diag = 'N'
     this%typem = 'G'
     this%part = 'B'
@@ -135,13 +142,14 @@ module qutraj_hilbert
 
   subroutine operat_init2(this,nnz,val,col,ptr,nrows,ncols)
     type(operat), intent(out) :: this
-    complex, intent(in), dimension(:) :: val
-    integer, intent(in), dimension(:) :: col,ptr
+    complex, intent(in) :: val(:)
+    integer, intent(in) :: col(:),ptr(:)
     integer, intent(in) :: nnz,nrows,ncols
     integer :: i
     call operat_init(this,nnz)
     if (nrows.ne.ncols) then
-      call fatal_error("operat_init2: nrows should equal ncols for operator type.")
+      call fatal_error("operat_init2: nrows should equal ncols &
+        for operator type.")
     endif
     this%m = ncols
     this%k = nrows
@@ -149,15 +157,16 @@ module qutraj_hilbert
     this%ia1 = col
     this%pb = ptr
     do i=1,nnz-1
-      this%pe(i) = this%pb(i+1)-1
+      this%pe(i) = this%pb(i+1)
     enddo
-    this%pe(nnz) = nnz
+    this%pe(nnz) = nnz+1
   end subroutine
 
   subroutine operat_finalize(this)
     type(operat), intent(inout) :: this
     integer :: istat
     deallocate(this%a,this%ia1,this%pb,this%pe,stat=istat)
+    !nullify(this%a,this%ia1,this%pb,this%pe)
     if (istat.ne.0) then
       call error("operat_finalize: could not deallocate.",istat)
     endif
@@ -173,60 +182,64 @@ module qutraj_hilbert
   !  state_state_eq = work
   !end function
 
-  type(state) function state_state_add(fi,psi)
-    ! |fi> + |psi>
-    type(state), intent(in) :: fi
-    type(state), intent(in) :: psi
-    work%x = fi%x+psi%x
-    state_state_add = work
-  end function
+  !type(state) function state_state_add(fi,psi)
+  !  ! |fi> + |psi>
+  !  type(state), intent(in) :: fi
+  !  type(state), intent(in) :: psi
+  !  work%x = fi%x+psi%x
+  !  state_state_add = work
+  !end function
 
-  type(state) function state_state_sub(fi,psi)
-    ! |fi> + |psi>
-    type(state), intent(in) :: fi
-    type(state), intent(in) :: psi
-    work%x = fi%x-psi%x
-    state_state_sub = work
-  end function
+  !type(state) function state_state_sub(fi,psi)
+  !  ! |fi> + |psi>
+  !  type(state), intent(in) :: fi
+  !  type(state), intent(in) :: psi
+  !  work%x = fi%x-psi%x
+  !  state_state_sub = work
+  !end function
 
-  type(state) function real_state_mult(c,psi)
-    type(state), intent(in) :: psi
-    real(wp), intent(in) :: c
-    work%x = c*psi%x
-    real_state_mult = work
-  end function
+  !type(state) function real_state_mult(c,psi)
+  !  type(state), intent(in) :: psi
+  !  real(wp), intent(in) :: c
+  !  work%x = c*psi%x
+  !  real_state_mult = work
+  !end function
 
-  type(state) function complex_state_mult(c,psi)
-    type(state), intent(in) :: psi
-    complex(wp), intent(in) :: c
-    work%x = c*psi%x
-    complex_state_mult = work
-  end function
+  !type(state) function complex_state_mult(c,psi)
+  !  type(state), intent(in) :: psi
+  !  complex(wp), intent(in) :: c
+  !  work%x = c*psi%x
+  !  complex_state_mult = work
+  !end function
 
   !
   ! Matrix vector multiplicatoin
   !
 
-  type(state) function operat_state_mult(oper,psi)
+  function operat_state_mult(oper,psi)
+    complex(wp), pointer :: operat_state_mult(:)
     type(operat), intent(in) :: oper
-    type(state), intent(in) :: psi
-    type(state) :: work
+    !type(state), intent(in) :: psi
+    complex(wp), allocatable, intent(in) :: psi(:)
+    !complex(wp), allocatable :: work
+    !type(state) :: work
     integer :: ierr
 
-    if (psi%n.ne.work%n) then
-      write(*,*) "operate_state_mult: state has wrong size:",psi%n
-      write(*,*) "should be:",work%n
+    !if (psi%n.ne.work%n) then
+    if (size(psi).ne.size(work)) then
+      write(*,*) "operate_state_mult: state has wrong size:",size(psi)
+      write(*,*) "should be:",size(work)
       write(*,*) "have you properly initialized 'work' state?"
       call fatal_error
       return
     endif
-    call sparse_mv_mult(oper,psi%x,work%x,ierr)
+    !call sparse_mv_mult(oper,psi%x,work%x,ierr)
+    call sparse_mv_mult(oper,psi,work,ierr)
     if (ierr.ne.0) then
       call error("operate_state_mult: error",ierr)
     endif
-    operat_state_mult = work
+    operat_state_mult => work
   end function
-
 
   subroutine sparse_mv_mult(mat,x,y,ierr)
     ! y = Ax

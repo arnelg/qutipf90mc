@@ -4,9 +4,8 @@ module qutraj_run
 
   implicit none
 
-  ! Defines the RHS, to be sent to zvode
-  !external rhs
-  !external dummy_jac
+  ! Solution
+  complex, allocatable :: sol(:,:)
 
   contains
 
@@ -30,7 +29,7 @@ module qutraj_run
     integer, intent(in) :: nnz,nrows,ncols
     complex, intent(in), dimension(nnz) :: val
     integer, intent(in), dimension(nnz) :: col,ptr
-    call new(hamilt,nnz,val,col,ptr,nrows,ncols)
+    call new(hamilt,nnz,val,col+1,ptr+1,nrows,ncols)
   end subroutine
 
   subroutine init_odedata(neq,atol,rtol,mf,lzw,lrw,liw,ml,mu,natol,nrtol)
@@ -110,10 +109,15 @@ module qutraj_run
   ! Deallocate everything
 
   subroutine finalize_all
+    integer :: istat
     !deallocate(ode%zwork,ode%rwork,ode%iwork,ode%atol,ode%rtol)
-    deallocate(tlist)
+    deallocate(tlist,sol,stat=istat)
+    if (istat.ne.0) then
+      call error("finalize_all: could not deallocate.",istat)
+    endif
     !call finalize(tlist)
     call finalize(psi0)
+    call finalize(psi)
     call finalize(work)
     call finalize(hamilt)
     call finalize(ode)
@@ -127,13 +131,12 @@ module qutraj_run
     integer :: istate
     integer :: istat,i
 
-    psi = hamilt*psi0
-    write(*,*) psi%x
-    write(*,*) "--------------"
-
+    ! Allocate solution array
+    allocate(sol(size(tlist),ode%neq),stat=istat)
+    ! Allocate solution
     allocate(y(ode%neq),stat=istat)
     if (istat.ne.0) then
-      call error("evolve: could not allocate.",istat)
+      call fatal_error("evolve: could not allocate.",istat)
     endif
 
     !write(*,*) ode%neq,ode%itol,ode%rtol,ode%atol
@@ -144,16 +147,17 @@ module qutraj_run
     ! first call to zvode
     istate = 1
     ! Initial values
-    y = psi0%x
+    y = psi0
 
-    do i=1,size(tlist)-1
-      ! Initial value of indep. variable
-      t = tlist(i)
+    ! Initial value of indep. variable
+    t = tlist(i)
+    do i=1,size(tlist)
       ! Solution wanted at
-      tout = tlist(i+1)
+      tout = tlist(i)
 
       call nojump(y,t,tout,istate)
-      write(*,*) t, y
+      !write(*,*) t, y
+      sol(i,:) = y
       if (istate.lt.0) then
         write(*,*) "error: istate=",istate
         stop

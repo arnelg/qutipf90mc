@@ -42,7 +42,8 @@ module qutraj_solver
   !
 
   real(sp), allocatable :: tlist(:)
-  type(state) :: psi0,psi
+  !type(state) :: psi0,psi
+  complex(wp), allocatable :: psi0(:),psi(:)
   type(operat) :: hamilt
   type(odeoptions) :: ode
 
@@ -134,10 +135,10 @@ subroutine rhs (neq, t, y, ydot, rpar, ipar)
   integer ipar,neq
   !type(state) :: dpsi
   !ydot(1) = y(1)
-  psi%x = y
+  psi = y
   psi = (-ii)*(hamilt*psi)
   !write(*,*) psi%x
-  ydot = psi%x
+  ydot = psi
 end subroutine
 
 subroutine dummy_jac (neq, t, y, ml, mu, pd, nrpd, rpar, ipar)
