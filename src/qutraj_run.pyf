@@ -6,6 +6,8 @@ python module qutraj_run ! in
         module qutraj_run ! in :qutraj_run:qutraj_run.f90
             use qutraj_solver
             complex, allocatable,dimension(:,:) :: sol
+            real(wp) :: rtest
+            complex(wp) :: ctest
             subroutine init_tlist(val,n) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 real(kind=sp) dimension(n),intent(in) :: val
                 integer, optional,intent(in),check(len(val)>=n),depend(val) :: n=len(val)

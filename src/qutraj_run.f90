@@ -6,23 +6,29 @@ module qutraj_run
 
   ! Solution
   complex, allocatable :: sol(:,:)
+  real(wp) :: rtest = 1.0
+  complex(wp) :: ctest = (1.0,0.0)
 
   contains
 
   ! Initialize problem
 
   subroutine init_tlist(val,n)
-    real(sp), intent(in), dimension(n) :: val
+    real(sp), intent(in) :: val(n)
     integer, intent(in) :: n
     call new(tlist,val)
   end subroutine
 
   subroutine init_psi0(val,n)
-    complex, intent(in), dimension(n) :: val
+    complex, intent(in), target :: val(n)
     integer, intent(in) :: n
+    complex, pointer :: testptr(:)
     call new(psi0,val)
     call new(psi,n)
     call new(work,n)
+    testptr => val
+    write(*,*) testptr
+    write(*,*) wp
   end subroutine
 
   subroutine init_hamiltonian(val,col,ptr,nnz,nrows,ncols)

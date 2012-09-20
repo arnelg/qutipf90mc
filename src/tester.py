@@ -4,8 +4,12 @@ from qutip import *
 from pylab import *
 import qutraj_run as qt
 
+# Working precision
+wpr = dtype(float64)
+wpc = dtype(complex128)
+
 def init_psi0(psi0):
-    psi0d = psi0.data.toarray()
+    psi0d = array(psi0.data.toarray(),wpc)
     qt.qutraj_run.init_psi0(psi0d,size(psi0d))
 
 def init_hamilt(H):
@@ -34,25 +38,20 @@ qt.qutraj_run.init_tlist(tlist)
 
 init_psi0(psi0)
 init_hamilt(H)
-atol = odeconfig.options.atol
-rtol = odeconfig.options.rtol
+opts = Odeoptions()
+atol = opts.atol
+rtol = opts.rtol
 qt.qutraj_run.init_odedata(neq,atol,rtol,mf=10)
 
-qt.qutraj_run.evolve()
-
-
-#qt.qutraj_run.finalize_all()
-
-#
-
-sol = mcsolve(H,psi0,tlist,[],[],ntraj=1)
+#qt.qutraj_run.evolve()
+#sol = mcsolve(H,psi0,tlist,[],[],ntraj=1)
 #sol = mcsolve(H,psi0,tlist,[sigmax()],[],ntraj=2)
 
-states = get_states()
-states2 = sol.states
-
-figure()
-plot(sol.times,real(expect(sigmaz(),states)))
-plot(sol.times,real(expect(sigmaz(),states2)))
+#states = get_states()
+#states2 = sol.states
+#
+#figure()
+#plot(sol.times,real(expect(sigmaz(),states)))
+#plot(sol.times,real(expect(sigmaz(),states2)))
 
 finalize()
