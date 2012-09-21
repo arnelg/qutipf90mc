@@ -62,17 +62,17 @@ module qutraj_hilbert
   !  module procedure state_state_eq
   !end interface
 
-  interface operator(+)
-    module procedure state_state_add
-  end interface
+  !interface operator(+)
+  !  module procedure state_state_add
+  !end interface
 
-  interface operator(-)
-    module procedure state_state_sub
-  end interface
+  !interface operator(-)
+  !  module procedure state_state_sub
+  !end interface
 
   interface operator(*)
-    module procedure real_state_mult
-    module procedure complex_state_mult
+    !module procedure real_state_mult
+    !module procedure complex_state_mult
     module procedure operat_state_mult
   end interface
 
@@ -176,41 +176,41 @@ module qutraj_hilbert
   !  state_state_eq = fi
   !end function
 
-  type(state) function state_state_add(fi,psi)
-    ! |fi> + |psi>
-    type(state), intent(in) :: fi
-    type(state), intent(in) :: psi
-    type(state) :: tmp
-    call new(tmp,size(psi%x),fi%x+psi%x)
-    state_state_add = tmp
-  end function
+  !type(state) function state_state_add(fi,psi)
+  !  ! |fi> + |psi>
+  !  type(state), intent(in) :: fi
+  !  type(state), intent(in) :: psi
+  !  type(state) :: tmp
+  !  call new(tmp,size(psi%x),fi%x+psi%x)
+  !  state_state_add = tmp
+  !end function
 
-  type(state) function state_state_sub(fi,psi)
-    ! |fi> + |psi>
-    type(state), intent(in) :: fi
-    type(state), intent(in) :: psi
-    type(state) :: tmp
-    call new(tmp,size(psi%x),fi%x-psi%x)
-    state_state_sub = tmp
-  end function
+  !type(state) function state_state_sub(fi,psi)
+  !  ! |fi> + |psi>
+  !  type(state), intent(in) :: fi
+  !  type(state), intent(in) :: psi
+  !  type(state) :: tmp
+  !  call new(tmp,size(psi%x),fi%x-psi%x)
+  !  state_state_sub = tmp
+  !end function
 
-  type(state) function real_state_mult(c,psi)
-    type(state), intent(in) :: psi
-    real(wp), intent(in) :: c
-    type(state) :: tmp
-    call new(tmp,size(psi%x),c*psi%x)
-    real_state_mult = tmp
-    !real_state_mult%x = c*psi%x
-  end function
+  !type(state) function real_state_mult(c,psi)
+  !  type(state), intent(in) :: psi
+  !  real(wp), intent(in) :: c
+  !  type(state) :: tmp
+  !  call new(tmp,size(psi%x),c*psi%x)
+  !  real_state_mult = tmp
+  !  !real_state_mult%x = c*psi%x
+  !end function
 
-  type(state) function complex_state_mult(c,psi)
-    type(state), intent(in) :: psi
-    complex(wp), intent(in) :: c
-    type(state) :: tmp
-    call new(tmp,size(psi%x),c*psi%x)
-    complex_state_mult = tmp
-    !complex_state_mult%x = c*psi%x
-  end function
+  !type(state) function complex_state_mult(c,psi)
+  !  type(state), intent(in) :: psi
+  !  complex(wp), intent(in) :: c
+  !  type(state) :: tmp
+  !  call new(tmp,size(psi%x),c*psi%x)
+  !  complex_state_mult = tmp
+  !  !complex_state_mult%x = c*psi%x
+  !end function
 
   !
   ! Matrix vector multiplicatoin
