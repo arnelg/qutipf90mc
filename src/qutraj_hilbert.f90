@@ -1,5 +1,6 @@
 module qutraj_hilbert
 
+  use qutraj_precision
   use qutraj_general
 
   implicit none
@@ -7,12 +8,6 @@ module qutraj_hilbert
   !
   ! Types
   !
-
-  !type state
-  !  ! States are dense one dimensional vectors
-  !  integer :: n
-  !  complex(wp), allocatable :: x(:)
-  !end type
 
   type operat
     ! Operators are represented as spare matrices
@@ -40,8 +35,10 @@ module qutraj_hilbert
     ! notice: pe(i) = pb(i+1)-1
   end type
 
+  !
   ! work variables
-  !type(state) :: work
+  !
+
   complex(wp), allocatable, target :: work(:)
 
 
@@ -54,28 +51,16 @@ module qutraj_hilbert
     module procedure state_init2
     module procedure operat_init
     module procedure operat_init2
+    module procedure operat_list_init
   end interface
 
   interface finalize
     module procedure state_finalize
     module procedure operat_finalize
+    module procedure operat_list_finalize
   end interface
 
-  !interface operator(=)
-  !  module procedure state_state_eq
-  !end interface
-
-  !interface operator(+)
-  !  module procedure state_state_add
-  !end interface
-
-  !interface operator(-)
-  !  module procedure state_state_sub
-  !end interface
-
   interface operator(*)
-    !module procedure real_state_mult
-    !module procedure complex_state_mult
     module procedure operat_state_mult
   end interface
 
@@ -104,7 +89,7 @@ module qutraj_hilbert
   subroutine state_init2(this,val)
     !type(state), intent(out) :: this
     complex(wp), allocatable :: this(:)
-    complex, intent(in), dimension(:) :: val
+    complex(sp), intent(in) :: val(:)
     call state_init(this,size(val))
     this = val
   end subroutine
@@ -139,10 +124,9 @@ module qutraj_hilbert
     this%typem = 'G'
     this%part = 'B'
   end subroutine
-
   subroutine operat_init2(this,nnz,val,col,ptr,nrows,ncols)
     type(operat), intent(out) :: this
-    complex, intent(in) :: val(:)
+    complex(sp), intent(in) :: val(:)
     integer, intent(in) :: col(:),ptr(:)
     integer, intent(in) :: nnz,nrows,ncols
     integer :: i
@@ -162,6 +146,16 @@ module qutraj_hilbert
     this%pe(nnz) = nnz+1
   end subroutine
 
+  subroutine operat_list_init(this,n)
+    type(operat), intent(inout), allocatable :: this(:)
+    integer, intent(in) :: n
+    integer :: istat
+    allocate(this(n),stat=istat)
+    if (istat.ne.0) then
+      call fatal_error("operat_list_init: could not allocate.",istat)
+    endif
+  end subroutine
+
   subroutine operat_finalize(this)
     type(operat), intent(inout) :: this
     integer :: istat
@@ -172,45 +166,15 @@ module qutraj_hilbert
     endif
   end subroutine
 
-  !
-  ! State arithmetic
-  !
-
-  !type(state) function state_state_eq(fi,psi)
-  !  type(state), intent(in) :: fi,psi
-  !  work%x = psi%x
-  !  state_state_eq = work
-  !end function
-
-  !type(state) function state_state_add(fi,psi)
-  !  ! |fi> + |psi>
-  !  type(state), intent(in) :: fi
-  !  type(state), intent(in) :: psi
-  !  work%x = fi%x+psi%x
-  !  state_state_add = work
-  !end function
-
-  !type(state) function state_state_sub(fi,psi)
-  !  ! |fi> + |psi>
-  !  type(state), intent(in) :: fi
-  !  type(state), intent(in) :: psi
-  !  work%x = fi%x-psi%x
-  !  state_state_sub = work
-  !end function
-
-  !type(state) function real_state_mult(c,psi)
-  !  type(state), intent(in) :: psi
-  !  real(wp), intent(in) :: c
-  !  work%x = c*psi%x
-  !  real_state_mult = work
-  !end function
-
-  !type(state) function complex_state_mult(c,psi)
-  !  type(state), intent(in) :: psi
-  !  complex(wp), intent(in) :: c
-  !  work%x = c*psi%x
-  !  complex_state_mult = work
-  !end function
+  subroutine operat_list_finalize(this)
+    type(operat), intent(inout), allocatable :: this(:)
+    integer :: istat
+    deallocate(this,stat=istat)
+    !nullify(this%a,this%ia1,this%pb,this%pe)
+    if (istat.ne.0) then
+      call error("operat_list_finalize: could not deallocate.",istat)
+    endif
+  end subroutine
 
   !
   ! Matrix vector multiplicatoin
@@ -219,10 +183,8 @@ module qutraj_hilbert
   function operat_state_mult(oper,psi)
     complex(wp), pointer :: operat_state_mult(:)
     type(operat), intent(in) :: oper
-    !type(state), intent(in) :: psi
-    complex(wp), allocatable, intent(in) :: psi(:)
+    complex(wp), intent(in) :: psi(:)
     !complex(wp), allocatable :: work
-    !type(state) :: work
     integer :: ierr
 
     !if (psi%n.ne.work%n) then
