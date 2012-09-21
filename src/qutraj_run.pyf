@@ -1,0 +1,66 @@
+!    -*- f90 -*-
+! Note: the context of this file is case sensitive.
+
+python module qutraj_run ! in 
+    interface  ! in :qutraj_run
+        module qutraj_run ! in :qutraj_run:qutraj_run.f90
+            use qutraj_precision
+            use qutraj_general
+            use qutraj_solver
+            integer, parameter :: wp=8
+            integer, optional :: ntraj=1
+            double precision, allocatable,dimension(:) :: tlist
+            integer, optional :: norm_steps=5
+            complex(kind=wp), allocatable,dimension(:) :: psi0
+            real(kind=wp), optional :: norm_tol=0.001
+            complex(kind=wp), allocatable,dimension(:,:) :: sol
+            subroutine init_tlist(val,n) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+                real(kind=sp) dimension(n),intent(in) :: val
+                integer, optional,intent(in),check(len(val)>=n),depend(val) :: n=len(val)
+            end subroutine init_tlist
+            subroutine init_psi0(val,n) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+                complex(kind=sp) dimension(n),intent(in) :: val
+                integer, optional,intent(in),check(len(val)>=n),depend(val) :: n=len(val)
+            end subroutine init_psi0
+            subroutine init_hamiltonian(val,col,ptr,nnz,nrows,ncols) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+                complex(kind=sp) dimension(nnz),intent(in) :: val
+                integer dimension(nnz),intent(in),depend(nnz) :: col
+                integer dimension(nnz),intent(in),depend(nnz) :: ptr
+                integer, optional,intent(in),check(len(val)>=nnz),depend(val) :: nnz=len(val)
+                integer intent(in) :: nrows
+                integer intent(in) :: ncols
+            end subroutine init_hamiltonian
+            subroutine init_c_ops(i,n,val,col,ptr,nnz,nrows,ncols) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+                integer intent(in) :: i
+                integer intent(in) :: n
+                complex(kind=sp) dimension(nnz),intent(in) :: val
+                integer dimension(nnz),intent(in),depend(nnz) :: col
+                integer dimension(nnz),intent(in),depend(nnz) :: ptr
+                integer, optional,intent(in),check(len(val)>=nnz),depend(val) :: nnz=len(val)
+                integer intent(in) :: nrows
+                integer intent(in) :: ncols
+            end subroutine init_c_ops
+            subroutine init_odedata(neq,atol,rtol,mf,lzw,lrw,liw,ml,mu,natol,nrtol) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+                integer intent(in) :: neq
+                double precision dimension(natol),intent(in) :: atol
+                double precision dimension(nrtol),intent(in) :: rtol
+                integer, optional,intent(in) :: mf = 0
+                integer, optional,intent(in) :: lzw = 0
+                integer, optional,intent(in) :: lrw = 0
+                integer, optional,intent(in) :: liw = 0
+                integer, optional,intent(in) :: ml = 0
+                integer, optional,intent(in) :: mu = 0
+                integer, optional,intent(in),check(len(atol)>=natol),depend(atol) :: natol=len(atol)
+                integer, optional,intent(in),check(len(rtol)>=nrtol),depend(rtol) :: nrtol=len(rtol)
+            end subroutine init_odedata
+            subroutine finalize_all ! in :qutraj_run:qutraj_run.f90:qutraj_run
+            end subroutine finalize_all
+            subroutine evolve ! in :qutraj_run:qutraj_run.f90:qutraj_run
+            end subroutine evolve
+            subroutine test_real_precision ! in :qutraj_run:qutraj_run.f90:qutraj_run
+            end subroutine test_real_precision
+        end module qutraj_run
+end python module qutraj_run
+
+! This file was auto-generated with f2py (version:2).
+! See http://cens.ioc.ee/projects/f2py2e/

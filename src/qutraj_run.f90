@@ -1,29 +1,60 @@
 module qutraj_run
 
+  use qutraj_precision
+  use qutraj_general
   use qutraj_solver
 
   implicit none
 
-  ! Defines the RHS, to be sent to zvode
-  external rhs
-  external dummy_jac
+  !
+  ! (Public) Data defining the problem
+  !
+  ! Some data is hidden in qutraj_solver instead.
+  !
+
+  double precision, allocatable :: tlist(:)
+  complex(wp), allocatable :: psi0(:)
+  integer :: ntraj=1
+  integer :: norm_steps = 5
+  real(wp) :: norm_tol = 0.001
+
+  ! Solution
+  complex(wp), allocatable :: sol(:,:)
 
   contains
 
   ! Initialize problem
 
-  subroutine init_psi0(val,n)
-    complex, intent(in), dimension(n) :: val
+  subroutine init_tlist(val,n)
+    real(sp), intent(in) :: val(n)
     integer, intent(in) :: n
-    call new(psi0,n,val)
+    call new(tlist,val)
+  end subroutine
+
+  subroutine init_psi0(val,n)
+    complex(sp), intent(in) :: val(n)
+    integer, intent(in) :: n
+    call new(psi0,val)
     call new(work,n)
   end subroutine
 
   subroutine init_hamiltonian(val,col,ptr,nnz,nrows,ncols)
     integer, intent(in) :: nnz,nrows,ncols
-    complex, intent(in), dimension(nnz) :: val
+    complex(sp), intent(in), dimension(nnz) :: val
     integer, intent(in), dimension(nnz) :: col,ptr
-    call new(hamilt,nnz,val,col,ptr,nrows,ncols)
+    call new(hamilt,nnz,val,col+1,ptr+1,nrows,ncols)
+  end subroutine
+
+  subroutine init_c_ops(i,n,val,col,ptr,nnz,nrows,ncols)
+    integer, intent(in) :: i,n
+    integer, intent(in) :: nnz,nrows,ncols
+    complex(sp), intent(in), dimension(nnz) :: val
+    integer, intent(in), dimension(nnz) :: col,ptr
+    if (.not.allocated(c_ops)) then
+      call new(c_ops,n)
+    endif
+    call new(c_ops(i),nnz,val,col+1,ptr+1,nrows,ncols)
+    write(*,*) c_ops(i)%a
   end subroutine
 
   subroutine init_odedata(neq,atol,rtol,mf,lzw,lrw,liw,ml,mu,natol,nrtol)
@@ -92,7 +123,6 @@ module qutraj_run
       ode%itol=2
     endif
 
-    ode%itask = 1
     ode%iopt = 0
 
     if (istat.ne.0) then
@@ -103,68 +133,111 @@ module qutraj_run
   ! Deallocate everything
 
   subroutine finalize_all
+    integer :: istat
     !deallocate(ode%zwork,ode%rwork,ode%iwork,ode%atol,ode%rtol)
+    deallocate(tlist,sol,stat=istat)
+    if (istat.ne.0) then
+      call error("finalize_all: could not deallocate.",istat)
+    endif
+    !call finalize(tlist)
     call finalize(psi0)
     call finalize(work)
     call finalize(hamilt)
+    call finalize(c_ops)
     call finalize(ode)
   end subroutine
 
   ! Evolution
 
   subroutine evolve
-    type(state) :: psi
     double precision :: t, tout
     double complex, allocatable :: y(:)
-    integer :: istate
-    integer :: istat
+    integer :: istate,itask
+    integer :: istat,i
+    real(wp) :: nu
+    ! ITASK  = An index specifying the task to be performed.
+    !          Input only.  ITASK has the following values and meanings.
+    !          1  means normal computation of output values of y(t) at
+    !             t = TOUT (by overshooting and interpolating).
+    !          2  means take one step only and return.
+    !          3  means stop at the first internal mesh point at or
+    !             beyond t = TOUT and return.
+    !          4  means normal computation of output values of y(t) at
+    !             t = TOUT but without overshooting t = TCRIT.
+    !             TCRIT must be input as RWORK(1).  TCRIT may be equal to
+    !             or beyond TOUT, but not behind it in the direction of
+    !             integration.  This option is useful if the problem
+    !             has a singularity at or beyond t = TCRIT.
+    !          5  means take one step, without passing TCRIT, and return.
+    !             TCRIT must be input as RWORK(1).
+    !
+    !          Note:  If ITASK = 4 or 5 and the solver reaches TCRIT
+    !          (within roundoff), it will return T = TCRIT (exactly) to
+    !          indicate this (unless ITASK = 4 and TOUT comes before TCRIT,
+    !          in which case answers at T = TOUT are returned first).
 
+    ! Allocate solution array
+    allocate(sol(size(tlist),ode%neq),stat=istat)
+    ! Allocate solution
     allocate(y(ode%neq),stat=istat)
     if (istat.ne.0) then
-      call error("evolve: could not allocate.",istat)
+      call fatal_error("evolve: could not allocate.",istat)
     endif
 
-    ! Initial values
-    y = psi0%x
-    ! Initial value of indep. variable
-    t = 0.
-    ! Solution wanted at
-    tout = 1.
+    ! integrate one step at the time, w/o overshooting
+    itask = 5
     ! first call to zvode
     istate = 1
+    ! Initial values
+    y = psi0
 
     !write(*,*) ode%neq,ode%itol,ode%rtol,ode%atol
-    !write(*,*) ode%itask,istate,ode%iopt
+    !write(*,*) itask,istate,ode%iopt
     !write(*,*) ode%lzw,ode%lrw,ode%liw
     !write(*,*) ode%mf
 
-    call zvode(rhs,ode%neq,y,t,tout,ode%itol,ode%rtol,ode%atol,&
-      ode%itask,istate,ode%iopt,ode%zwork,ode%lzw,ode%rwork,ode%lrw,&
-      ode%iwork,ode%liw,dummy_jac,ode%mf,ode%rpar,ode%ipar)
+    ! Initalize rng
+    call init_genrand(1)
+    nu = grnd()
 
-    write(*,*) t, y(1)
-    if (istate.lt.0) then
-      write(*,*) "error: istate=",istate
-      stop
-    endif
+    ! Initial value of indep. variable
+    t = tlist(i)
+    do i=1,size(tlist)
+      ! Solution wanted at
+      if (i==1) then
+        tout = t
+      else
+        tout = tlist(i)
+        ode%rwork(1) = tout
+      endif
+
+      do while(t<tout)
+        call nojump(y,t,tout,itask,istate)
+        write(*,*) t, y
+      enddo
+      sol(i,:) = y
+      if (istate.lt.0) then
+        write(*,*) "error: istate=",istate
+        stop
+      endif
+    enddo
+  end subroutine
+
+  ! Misc
+  subroutine test_real_precision
+    real(wp) :: b,a
+    integer :: i
+    write(*,*) "wp=",wp
+    b = 1.0
+    a = 1.0
+    i = 1
+    do while (b.ne.b+a)
+      a = a*0.1
+      if (b==b+a) then
+        write(*,*) "number of decimals precision: ",i-1
+      endif
+      i = i+1
+    enddo
   end subroutine
 
 end module
-
-subroutine rhs (neq, t, y, ydot, rpar, ipar)
-  double complex y(neq), ydot(neq),rpar
-  double precision t
-  integer ipar
-  type(state) :: dpsi
-  !ydot(1) = sin(t)*(1.,0.)
-  !ydot(1) = y(1)
-  dpsi = -ii*(hamilt*psi)
-  ydot = dpsi%x
-end subroutine
-
-subroutine dummy_jac (neq, t, y, ml, mu, pd, nrpd, rpar, ipar)
-  double complex y(neq), pd(nrpd,neq), rpar
-  double precision t
-  return
-end
-

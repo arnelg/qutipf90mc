@@ -1,5 +1,7 @@
 module qutraj_general
 
+  use qutraj_precision
+
   implicit none
 
   !
@@ -9,12 +11,6 @@ module qutraj_general
   !
   ! Constants
   !
-
-  integer, parameter :: sp = kind(1.0e0) ! single precision
-  integer, parameter :: dp = kind(1.0d0) ! double precision
-  integer, parameter :: wp = dp ! working precision
-  integer, parameter :: wpc = wp ! working precision complex numbers
-  integer, parameter :: blas_error_param    = -23
 
   ! small and large number
   real, parameter :: epsi=5*epsilon(1.0)

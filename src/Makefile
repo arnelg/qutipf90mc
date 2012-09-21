@@ -13,7 +13,9 @@ ZVODE = zvode zcopy zgbfa zgbsl zgefa zgesl
 ZVODE_OBJS = $(ZVODE:=.o)
 ZVODE_SRCS = $(ZVODE:=.f)
 
-MODS = qutraj_general
+MODS = qutraj_precision
+MODS += mt19937
+MODS += qutraj_general
 MODS += qutraj_hilbert
 MODS += qutraj_solver
 
@@ -32,18 +34,25 @@ all:
 	@echo make f2pybuild - compiles the module and all dependencies.
 
 pyf:
-	cp $(TARGET:=.pyf) $(TARGET:=.pyf.backup)
+ifneq "$(wildcard qutraj_run.pyf )" ""
+	-cp $(TARGET:=.pyf) $(TARGET:=.pyf.backup)
+endif
 	f2py -m $(TARGET) -h $(TARGET:=.pyf) $(PYFFLAGS) $(TARGET:=.f90)
-	
+	@echo
+	@echo Remember to manually edit .pyf file to remove private subroutines, give default values to optional parameters, and set precision.
+
 #
-# need to manually edit .pyf file to remove private subroutines.
+# need to manually edit .pyf file to remove private subroutines,
+# and give default values for optional arguments
 #
 
 f2pybuild: $(OBJS)
-	f2py $(F2PYBUILDFLAGS) -c $(TARGET:=.pyf) $(TARGET:=.f90) $(SRCS)
+	f2py $(F2PYBUILDFLAGS) -c $(TARGET:=.pyf) $(TARGET:=.f90) $(SRCS) $(ZVODE_OBJS) $(LDFLAGS)
+	@echo
+	@echo Remember to manually edit .pyf file to remove private subroutines, give default values to optional parameters, and set precision. BEFORE building.
 
-#f90mcsolve: $(OBJS) f90mcsolve.o
-	#$(F90) $(F90FLAGS) -c $(OBJS) $(@:=.o)
+
+$(OBJS): $(ZVODE_OBJS)
 
 clean:
 	$(RM) *.o
@@ -62,14 +71,16 @@ clean:
 .f90.mod:
 	$(F90) $(F90FLAGS) -c $< 
 .f.o:
-	$(F77) $(F77FLAGS) -c $< 
+	$(F77) $(F77FLAGS) -c -fPIC $< 
 
 #
 # Dependencies
 #
 
-qutraj_run.o: qutraj_run.f90 qutraj_solver.o qutraj_general.o
-qutraj_solver.o: qutraj_solver.f90 qutraj_hilbert.o qutraj_general.o
-qutraj_hilbert.o: qutraj_hilbert.f90 qutraj_general.o
-qutraj_general.o: qutraj_general.f90
+qutraj_run: qutraj_run.f90 qutraj_precision.o qutraj_solver.o qutraj_general.o m19937.o
+qutraj_solver: qutraj_solver.f90 qutraj_precision.o qutraj_hilbert.o qutraj_general.o zvode.o
+qutraj_hilbert: qutraj_hilbert.f90 qutraj_precision.o qutraj_general.o
+qutraj_general: qutraj_general.f90 qutraj_precision.o
+m19937: m19937.f90 qutraj_precision.o
+qutraj_precision: qutraj_precision.f90
 

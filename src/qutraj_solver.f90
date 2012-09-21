@@ -1,9 +1,15 @@
 module qutraj_solver
 
+  use qutraj_precision
   use qutraj_general
   use qutraj_hilbert
+  use mt19937
 
   implicit none
+
+  ! Defines the RHS, to be sent to zvode
+  external rhs
+  external dummy_jac
 
   !
   ! Types
@@ -18,7 +24,7 @@ module qutraj_solver
     ! work array rwork should have length 20+neq for non-siff
     integer :: lrw = 0
     double precision, allocatable :: rwork(:)
-    ! work array iwrok should have length 30 for non-stiff
+    ! work array iwork should have length 30 for non-stiff
     integer :: liw = 0
     integer, allocatable :: iwork(:)
     ! method flag mf should be 10 for non-stiff
@@ -28,24 +34,33 @@ module qutraj_solver
     integer :: ipar(1)
     ! abs. tolerance, rel. tolerance 
     double precision, allocatable :: atol(:), rtol(:)
-    ! itask=1 for normal output
     ! iopt=number of optional inputs, itol=1 for atol scalar, 2 otherwise
-    integer :: itask, iopt, itol
+    integer :: iopt, itol
   end type
 
   !
   ! (Public) Data defining the problem
   !
 
-  type(state) :: psi0
+  ! Ode config options
+
+  !complex(wp), allocatable :: psi(:)
   type(operat) :: hamilt
+  type(operat), allocatable :: c_ops(:)
   type(odeoptions) :: ode
+
 
   !
   ! Interfaces
   !
 
+  interface new
+    module procedure sp_array_init
+    module procedure sp_array_init2
+  end interface
+
   interface finalize
+    module procedure sp_array_finalize
     module procedure odeoptions_finalize
   end interface
 
@@ -59,6 +74,31 @@ module qutraj_solver
   ! Initializers and finalizers
   !
 
+  subroutine sp_array_init(this,n)
+    real(wp), allocatable, intent(inout) :: this(:)
+    integer, intent(in) :: n
+    integer :: istat
+    allocate(this(n),stat=istat)
+    if (istat.ne.0) then
+      call fatal_error("sp_array_init: could not allocate.",istat)
+    endif
+  end subroutine
+  subroutine sp_array_init2(this,val)
+    real(wp), allocatable, intent(inout) :: this(:)
+    real(sp), intent(in), dimension(:) :: val
+    call sp_array_init(this,size(val))
+    this = val
+  end subroutine
+
+  subroutine sp_array_finalize(this)
+    real(sp), allocatable, intent(inout) :: this
+    integer :: istat
+    deallocate(this,stat=istat)
+    if (istat.ne.0) then
+      call error("sp_array_finalize: could not deallocate.",istat)
+    endif
+  end subroutine
+
   subroutine odeoptions_finalize(this)
     type(odeoptions), intent(inout) :: this
     integer :: istat
@@ -68,4 +108,50 @@ module qutraj_solver
     endif
   end subroutine
 
+  !
+  ! Evolution subs
+  !
+
+  subroutine nojump(y,t,tout,itask,istate)
+    double complex, intent(inout) :: y(:)
+    double precision, intent(inout) :: t
+    double precision, intent(in) :: tout
+    integer, intent(in) :: itask
+    integer, intent(inout) :: istate
+    integer :: istat
+
+    call zvode(rhs,ode%neq,y,t,tout,ode%itol,ode%rtol,ode%atol,&
+      itask,istate,ode%iopt,ode%zwork,ode%lzw,ode%rwork,ode%lrw,&
+      ode%iwork,ode%liw,dummy_jac,ode%mf,ode%rpar,ode%ipar)
+  end subroutine
+
 end module
+
+!
+! RHS for zvode
+!
+
+subroutine rhs (neq, t, y, ydot, rpar, ipar)
+  use qutraj_hilbert
+  use qutraj_solver
+  double complex y(neq), ydot(neq),rpar
+  !complex(wp) :: y(neq), ydot(neq),rpar
+  double precision t
+  integer ipar,neq
+  !type(state) :: dpsi
+  !ydot(1) = y(1)
+  !psi = y
+  ydot = -ii*(hamilt*y)
+  !write(*,*) psi%x
+  !ydot = psi
+end subroutine
+
+subroutine dummy_jac (neq, t, y, ml, mu, pd, nrpd, rpar, ipar)
+  double complex y(neq), pd(nrpd,neq), rpar
+  double precision t
+  integer neq,ml,mu,nrpd,ipar
+  return
+end
+
+
+
