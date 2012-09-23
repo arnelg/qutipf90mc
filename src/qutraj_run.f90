@@ -39,23 +39,31 @@ module qutraj_run
     call new(work,n)
   end subroutine
 
-  subroutine init_hamiltonian(val,col,ptr,nnz,nrows,ncols)
-    integer, intent(in) :: nnz,nrows,ncols
-    complex(sp), intent(in), dimension(nnz) :: val
-    integer, intent(in), dimension(nnz) :: col,ptr
-    call new(hamilt,nnz,val,col+1,ptr+1,nrows,ncols)
+  subroutine init_hamiltonian(val,col,ptr,m,k,nnz,nptr)
+    integer, intent(in) :: nnz,nptr,m,k
+    complex(sp), intent(in)  :: val(nnz)
+    integer, intent(in) :: col(nnz),ptr(nptr)
+    call new(hamilt,nnz,nptr,val,col+1,ptr+1,m,k)
   end subroutine
 
-  subroutine init_c_ops(i,n,val,col,ptr,nnz,nrows,ncols)
+  !subroutine init_hamiltonian(val,col,ptr,nnz,nptr,nrows,ncols)
+  !  integer, intent(in) :: nnz,nptr,nrows,ncols
+  !  complex(sp), intent(in)  :: val(nnz)
+  !  integer, intent(in) :: col(nnz),ptr(nptr)
+  !  write(*,*) col
+  !  !call new(hamilt,nnz,nptr,val,col+1,ptr+1,nrows,ncols)
+  !end subroutine
+
+  subroutine init_c_ops(i,n,val,col,ptr,m,k,nnz,nptr)
     integer, intent(in) :: i,n
-    integer, intent(in) :: nnz,nrows,ncols
-    complex(sp), intent(in), dimension(nnz) :: val
-    integer, intent(in), dimension(nnz) :: col,ptr
+    integer, intent(in) :: nnz,nptr,m,k
+    complex(sp), intent(in) :: val(nnz)
+    integer, intent(in) :: col(nnz),ptr(nptr)
     if (.not.allocated(c_ops)) then
       call new(c_ops,n)
     endif
     n_c_ops = n
-    call new(c_ops(i),nnz,val,col+1,ptr+1,nrows,ncols)
+    call new(c_ops(i),nnz,nptr,val,col+1,ptr+1,m,k)
     write(*,*) c_ops(i)%a
   end subroutine
 
@@ -153,7 +161,7 @@ module qutraj_run
 
   subroutine evolve
     double precision :: t, tout, t_prev, t_final, t_guess
-    double complex, allocatable :: y(:),y_prev(:)
+    double complex, allocatable :: y(:),y_prev(:),ynormed(:)
     integer :: istate,itask
     integer :: istat,i,j,k
     real(wp) :: nu,mu,norm2_psi,norm2_prev,norm2_guess,sump
@@ -185,6 +193,7 @@ module qutraj_run
     ! Allocate solution
     allocate(y(ode%neq),stat=istat)
     allocate(y_prev(ode%neq),stat=istat)
+    allocate(ynormed(ode%neq),stat=istat)
     ! Allocate tmp array for jumps
     allocate(p(n_c_ops),stat=istat)
     allocate(tmp(n_c_ops,ode%neq),stat=istat)
@@ -233,6 +242,7 @@ module qutraj_run
         ! prob of nojump
         norm2_psi = real(sum(conjg(y)*y))
         if (norm2_psi.le.nu) then
+          ! jump
           ! find collapse time to specified tolerance
           t_final = t
           do k=1,norm_steps
@@ -262,7 +272,7 @@ module qutraj_run
           if (k > norm_steps) then
             call error("Norm tolerance not reached. Increase accuracy of ODE solver or norm_steps.")
           endif
-          ! jump happened, determine which
+          ! determine which jump happened
           do j=1,n_c_ops
             call jump(j,y,tmp(j,:))
             p(j) = real(sum(conjg(y)*y))
@@ -276,6 +286,7 @@ module qutraj_run
           enddo
         endif
       enddo
+      ynormed = y/sqrt(real(sum(conjg(y)*y)))
       sol(i,:) = y
     enddo
   end subroutine

@@ -104,16 +104,16 @@ module qutraj_hilbert
     endif
   end subroutine
 
-  subroutine operat_init(this,nnz)
+  subroutine operat_init(this,nnz,nptr)
     ! todo: add special support for Hermitian matrix
     type(operat), intent(out) :: this
-    integer, intent(in) :: nnz
+    integer, intent(in) :: nnz,nptr
     integer :: istat
     this%nnz = nnz
     allocate(this%a(nnz),stat=istat)
     allocate(this%ia1(nnz),stat=istat)
-    allocate(this%pb(nnz),stat=istat)
-    allocate(this%pe(nnz),stat=istat)
+    allocate(this%pb(nptr),stat=istat)
+    allocate(this%pe(nptr),stat=istat)
     if (istat.ne.0) then
       call fatal_error("operat_init: could not allocate.",istat)
     endif
@@ -124,18 +124,18 @@ module qutraj_hilbert
     this%typem = 'G'
     this%part = 'B'
   end subroutine
-  subroutine operat_init2(this,nnz,val,col,ptr,nrows,ncols)
+  subroutine operat_init2(this,nnz,nptr,val,col,ptr,m,k)
+    integer, intent(in) :: nnz,nptr,m,k
     type(operat), intent(out) :: this
-    complex(sp), intent(in) :: val(:)
-    integer, intent(in) :: col(:),ptr(:)
-    integer, intent(in) :: nnz,nrows,ncols
+    complex(sp), intent(in) :: val(nnz)
+    integer, intent(in) :: col(nnz),ptr(nptr)
     integer :: i
-    call operat_init(this,nnz)
-    if (nrows.ne.ncols) then
-      call fatal_error("operat_init2: nrows should equal ncols for operator type.")
+    call operat_init(this,nnz,nptr)
+    if (m.ne.k) then
+      call fatal_error("operat_init2: # rows should equal # cols for operator type.")
     endif
-    this%m = ncols
-    this%k = nrows
+    this%m = m
+    this%k = k
     this%a = val
     this%ia1 = col
     this%pb = ptr
@@ -159,7 +159,6 @@ module qutraj_hilbert
     type(operat), intent(inout) :: this
     integer :: istat
     deallocate(this%a,this%ia1,this%pb,this%pe,stat=istat)
-    !nullify(this%a,this%ia1,this%pb,this%pe)
     if (istat.ne.0) then
       call error("operat_finalize: could not deallocate.",istat)
     endif
@@ -167,9 +166,11 @@ module qutraj_hilbert
 
   subroutine operat_list_finalize(this)
     type(operat), intent(inout), allocatable :: this(:)
-    integer :: istat
+    integer :: istat,i
+    do i=1,size(this)
+      call finalize(this(i))
+    enddo
     deallocate(this,stat=istat)
-    !nullify(this%a,this%ia1,this%pb,this%pe)
     if (istat.ne.0) then
       call error("operat_list_finalize: could not deallocate.",istat)
     endif
