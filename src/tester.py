@@ -5,7 +5,7 @@ from pylab import *
 import qutraj_run as qt
 
 # Working precision
-wpr = dtype(float32)
+wpr = dtype(float64)
 wpc = dtype(complex64)
 
 def init_tlist(tlist):
@@ -16,9 +16,19 @@ def init_psi0(psi0):
     psi0d = array(psi0.data.toarray(),dtype=wpc).transpose()
     qt.qutraj_run.init_psi0(psi0d,size(psi0d))
 
-def init_hamilt(H):
-    datad = array(H.data.data,dtype=wpc)
-    qt.qutraj_run.init_hamiltonian(datad,H.data.indices,H.data.indptr[0:size(H.data.indptr)-1],H.data.nnz,H.data.shape[0],H.data.shape[1])
+def init_hamilt(H,c_ops):
+    # construct effective non-Hermitian Hamiltonian
+    H_eff = H - 0.5j*sum([c_ops[i].dag()*c_ops[i] for i in range(len(c_ops))])
+    print H_eff
+    datad = array(H_eff.data.data,dtype=wpc)
+    print datad
+    print H_eff.data.indices
+    print H_eff.data.indptr
+    print H_eff.data.indptr[0:size(H_eff.data.indptr)-1]
+    print H_eff.data.nnz
+    print H_eff.data.shape[0]
+    print H_eff.data.shape[1]
+    qt.qutraj_run.init_hamiltonian(datad,array(H_eff.data.indices),H_eff.data.indptr[0:size(H_eff.data.indptr)-1],H_eff.data.nnz,H_eff.data.shape[0],H_eff.data.shape[1])
 
 def init_c_ops(c_ops):
     n = len(c_ops)
@@ -40,6 +50,7 @@ psi0 = basis(neq,0)
 H = sigmax()
 gamma = 0.1
 c_ops = [gamma*sigmax()]
+expts = [sigmaz()]
 
 # Times
 T = 10.0
@@ -47,25 +58,33 @@ dt = 0.1
 nstep = int(T/dt)
 tlist = linspace(0,T,nstep)
 
+ntraj=1
+
 init_tlist(tlist)
 init_psi0(psi0)
-init_hamilt(H)
+init_hamilt(H,c_ops)
 #init_c_ops(c_ops)
-
-opts = Odeoptions()
-atol = opts.atol
-rtol = opts.rtol
-qt.qutraj_run.init_odedata(neq,atol,rtol,mf=10)
-
-qt.qutraj_run.evolve()
-#sol = mcsolve(H,psi0,tlist,c_ops,[],ntraj=1)
-sol = mcsolve(H,psi0,tlist,[],[],ntraj=1)
-
-states = get_states()
-states2 = sol.states
-
-figure()
-plot(sol.times,real(expect(sigmaz(),states)))
-plot(sol.times,real(expect(sigmaz(),states2)))
-
+#
+## set options
+#opts = Odeoptions()
+#atol = opts.atol
+#rtol = opts.rtol
+#
+#qt.qutraj_run.ntraj = ntraj
+#
+#qt.qutraj_run.init_odedata(neq,atol,rtol,mf=10)
+#
+#qt.qutraj_run.evolve()
+#
+#sol = mcsolve(H,psi0,tlist,c_ops,expts,ntraj=ntraj)
+##sol = mcsolve(H,psi0,tlist,[],expts,ntraj=ntraj)
+#
+#states = get_states()
+##states2 = sol.states
+#
+#figure()
+#plot(tlist,real(expect(sigmaz(),states)))
+##plot(tlist,real(expect(sigmaz(),states2)))
+#plot(tlist,sol.expect[0])
+#
 finalize()

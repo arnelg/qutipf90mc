@@ -17,6 +17,7 @@ module qutraj_run
   integer :: ntraj=1
   integer :: norm_steps = 5
   real(wp) :: norm_tol = 0.001
+  integer :: n_c_ops = 0
 
   ! Solution
   complex(wp), allocatable :: sol(:,:)
@@ -53,6 +54,7 @@ module qutraj_run
     if (.not.allocated(c_ops)) then
       call new(c_ops,n)
     endif
+    n_c_ops = n
     call new(c_ops(i),nnz,val,col+1,ptr+1,nrows,ncols)
     write(*,*) c_ops(i)%a
   end subroutine
@@ -150,11 +152,13 @@ module qutraj_run
   ! Evolution
 
   subroutine evolve
-    double precision :: t, tout
-    double complex, allocatable :: y(:)
+    double precision :: t, tout, t_prev, t_final, t_guess
+    double complex, allocatable :: y(:),y_prev(:)
     integer :: istate,itask
-    integer :: istat,i
-    real(wp) :: nu
+    integer :: istat,i,j,k
+    real(wp) :: nu,mu,norm2_psi,norm2_prev,norm2_guess,sump
+    real(wp), allocatable :: p(:)
+    complex(wp), allocatable :: tmp(:,:)
     ! ITASK  = An index specifying the task to be performed.
     !          Input only.  ITASK has the following values and meanings.
     !          1  means normal computation of output values of y(t) at
@@ -180,6 +184,10 @@ module qutraj_run
     allocate(sol(size(tlist),ode%neq),stat=istat)
     ! Allocate solution
     allocate(y(ode%neq),stat=istat)
+    allocate(y_prev(ode%neq),stat=istat)
+    ! Allocate tmp array for jumps
+    allocate(p(n_c_ops),stat=istat)
+    allocate(tmp(n_c_ops,ode%neq),stat=istat)
     if (istat.ne.0) then
       call fatal_error("evolve: could not allocate.",istat)
     endif
@@ -190,6 +198,7 @@ module qutraj_run
     istate = 1
     ! Initial values
     y = psi0
+    norm2_psi = real(sum(conjg(y)*y))
 
     !write(*,*) ode%neq,ode%itol,ode%rtol,ode%atol
     !write(*,*) itask,istate,ode%iopt
@@ -199,6 +208,7 @@ module qutraj_run
     ! Initalize rng
     call init_genrand(1)
     nu = grnd()
+    mu = grnd()
 
     ! Initial value of indep. variable
     t = tlist(i)
@@ -212,14 +222,61 @@ module qutraj_run
       endif
 
       do while(t<tout)
+        t_prev = t
+        y_prev = y
+        norm2_prev = norm2_psi
         call nojump(y,t,tout,itask,istate)
-        write(*,*) t, y
+        if (istate.lt.0) then
+          write(*,*) "zvode error: istate=",istate
+          stop
+        endif
+        ! prob of nojump
+        norm2_psi = real(sum(conjg(y)*y))
+        if (norm2_psi.le.nu) then
+          ! find collapse time to specified tolerance
+          t_final = t
+          do k=1,norm_steps
+            t_guess=t_prev+log(norm2_prev/mu)&
+              /log(norm2_prev/norm2_psi)*(t_final-t_prev)
+            y = y_prev
+            t = t_prev
+            call nojump(y,t,t_guess,1,istate)
+            if (istate.lt.0) then
+              write(*,*) "zvode failed after adjusting step size. istate=",istate
+              stop
+            endif
+            norm2_guess = real(sum(conjg(y)*y))
+            if (abs(mu-norm2_guess) < norm_tol*mu) then
+                exit
+            elseif (norm2_guess < mu) then
+                ! t_guess is still > t_jump
+                t_final=t_guess
+                norm2_psi=norm2_guess
+            else
+                ! t_guess < t_jump
+                t_prev=t_guess
+                y_prev=y
+                norm2_prev=norm2_guess
+            endif
+          enddo
+          if (k > norm_steps) then
+            call error("Norm tolerance not reached. Increase accuracy of ODE solver or norm_steps.")
+          endif
+          ! jump happened, determine which
+          do j=1,n_c_ops
+            call jump(j,y,tmp(j,:))
+            p(j) = real(sum(conjg(y)*y))
+            !p(j) = real(sum(conjg(y)*y))*delta_t
+          enddo
+          p = p/sum(p)
+          sump = 0
+          do j=1,n_c_ops
+            if ((sump <= mu) .and. (mu < sump+p(j))) y = tmp(j,:)
+            sump = sump+p(j)
+          enddo
+        endif
       enddo
       sol(i,:) = y
-      if (istate.lt.0) then
-        write(*,*) "error: istate=",istate
-        stop
-      endif
     enddo
   end subroutine
 

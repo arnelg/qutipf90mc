@@ -113,6 +113,7 @@ module qutraj_solver
   !
 
   subroutine nojump(y,t,tout,itask,istate)
+    ! evolve with effective hamiltonian
     double complex, intent(inout) :: y(:)
     double precision, intent(inout) :: t
     double precision, intent(in) :: tout
@@ -125,6 +126,14 @@ module qutraj_solver
       ode%iwork,ode%liw,dummy_jac,ode%mf,ode%rpar,ode%ipar)
   end subroutine
 
+  subroutine jump(j,y,tmp)
+    ! tmp = c_ops(j)*y
+    integer, intent(in) :: j
+    double complex, intent(in) :: y(:)
+    double complex, intent(out) :: tmp(:)
+    tmp = c_ops(j)*y
+  end subroutine
+
 end module
 
 !
@@ -132,6 +141,7 @@ end module
 !
 
 subroutine rhs (neq, t, y, ydot, rpar, ipar)
+  ! evolve with effective hamiltonian
   use qutraj_hilbert
   use qutraj_solver
   double complex y(neq), ydot(neq),rpar

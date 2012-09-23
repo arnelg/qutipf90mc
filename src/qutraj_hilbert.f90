@@ -132,8 +132,7 @@ module qutraj_hilbert
     integer :: i
     call operat_init(this,nnz)
     if (nrows.ne.ncols) then
-      call fatal_error("operat_init2: nrows should equal ncols &
-        for operator type.")
+      call fatal_error("operat_init2: nrows should equal ncols for operator type.")
     endif
     this%m = ncols
     this%k = nrows
