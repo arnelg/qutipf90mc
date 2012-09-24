@@ -18,6 +18,8 @@ module qutraj_solver
   type odeoptions
     ! No. of ODES
     integer :: neq=1
+    ! Max no. of steps
+    integer :: max_step
     ! work array zwork should have length 15*neq for non-stiff
     integer :: lzw = 0
     double complex, allocatable :: zwork(:)
@@ -46,7 +48,7 @@ module qutraj_solver
 
   !complex(wp), allocatable :: psi(:)
   type(operat) :: hamilt
-  type(operat), allocatable :: c_ops(:)
+  type(operat), allocatable :: c_ops(:), e_ops(:)
   type(odeoptions) :: ode
 
 
@@ -55,12 +57,15 @@ module qutraj_solver
   !
 
   interface new
-    module procedure sp_array_init
+    module procedure int_array_init
+    module procedure int_array_init2
+    module procedure r_array_init
     module procedure sp_array_init2
+    module procedure dp_array_init2
   end interface
 
   interface finalize
-    module procedure sp_array_finalize
+    module procedure r_array_finalize
     module procedure odeoptions_finalize
   end interface
 
@@ -74,10 +79,32 @@ module qutraj_solver
   ! Initializers and finalizers
   !
 
-  subroutine sp_array_init(this,n)
+  subroutine int_array_init(this,n)
+    integer, allocatable, intent(inout) :: this(:)
+    integer, intent(in) :: n
+    integer :: istat
+    if (allocated(this)) then
+      deallocate(this,stat=istat)
+    endif
+    allocate(this(n),stat=istat)
+    if (istat.ne.0) then
+      call fatal_error("int_array_init: could not allocate.",istat)
+    endif
+  end subroutine
+  subroutine int_array_init2(this,val)
+    integer, allocatable, intent(inout) :: this(:)
+    integer, intent(in), dimension(:) :: val
+    call int_array_init(this,size(val))
+    this = val
+  end subroutine
+
+  subroutine r_array_init(this,n)
     real(wp), allocatable, intent(inout) :: this(:)
     integer, intent(in) :: n
     integer :: istat
+    if (allocated(this)) then
+      deallocate(this,stat=istat)
+    endif
     allocate(this(n),stat=istat)
     if (istat.ne.0) then
       call fatal_error("sp_array_init: could not allocate.",istat)
@@ -86,14 +113,22 @@ module qutraj_solver
   subroutine sp_array_init2(this,val)
     real(wp), allocatable, intent(inout) :: this(:)
     real(sp), intent(in), dimension(:) :: val
-    call sp_array_init(this,size(val))
+    call r_array_init(this,size(val))
+    this = val
+  end subroutine
+  subroutine dp_array_init2(this,val)
+    real(wp), allocatable, intent(inout) :: this(:)
+    real(dp), intent(in), dimension(:) :: val
+    call r_array_init(this,size(val))
     this = val
   end subroutine
 
-  subroutine sp_array_finalize(this)
-    real(sp), allocatable, intent(inout) :: this
-    integer :: istat
-    deallocate(this,stat=istat)
+  subroutine r_array_finalize(this)
+    real(wp), allocatable, intent(inout) :: this(:)
+    integer :: istat=0
+    if (allocated(this)) then
+      deallocate(this,stat=istat)
+    endif
     if (istat.ne.0) then
       call error("sp_array_finalize: could not deallocate.",istat)
     endif
@@ -102,9 +137,35 @@ module qutraj_solver
   subroutine odeoptions_finalize(this)
     type(odeoptions), intent(inout) :: this
     integer :: istat
-    deallocate(this%zwork,this%rwork,this%iwork,this%atol,this%rtol,stat=istat)
-    if (istat.ne.0) then
-      call error("odeoptions_finalize: could not deallocate.",istat)
+    if (allocated(this%zwork)) then
+      deallocate(this%zwork,stat=istat)
+      if (istat.ne.0) then
+        call error("odeoptions_finalize: could not deallocate.",istat)
+      endif
+    endif
+    if (allocated(this%rwork)) then
+      deallocate(this%rwork,stat=istat)
+      if (istat.ne.0) then
+        call error("odeoptions_finalize: could not deallocate.",istat)
+      endif
+    endif
+    if (allocated(this%iwork)) then
+      deallocate(this%iwork,stat=istat)
+      if (istat.ne.0) then
+        call error("odeoptions_finalize: could not deallocate.",istat)
+      endif
+    endif
+    if (allocated(this%atol)) then
+      deallocate(this%atol,stat=istat)
+      if (istat.ne.0) then
+        call error("odeoptions_finalize: could not deallocate.",istat)
+      endif
+    endif
+    if (allocated(this%rtol)) then
+      deallocate(this%rtol,stat=istat)
+      if (istat.ne.0) then
+        call error("odeoptions_finalize: could not deallocate.",istat)
+      endif
     endif
   end subroutine
 

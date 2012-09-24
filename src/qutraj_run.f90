@@ -1,3 +1,8 @@
+!
+! TODO:
+!
+! - optional arguments, see zvode.f
+!
 module qutraj_run
 
   use qutraj_precision
@@ -12,15 +17,18 @@ module qutraj_run
   ! Some data is hidden in qutraj_solver instead.
   !
 
-  double precision, allocatable :: tlist(:)
+  real(wp), allocatable :: tlist(:)
   complex(wp), allocatable :: psi0(:)
   integer :: ntraj=1
   integer :: norm_steps = 5
   real(wp) :: norm_tol = 0.001
   integer :: n_c_ops = 0
+  integer :: n_e_ops = 0
+  logical :: mc_avg = .true.
 
   ! Solution
-  complex(wp), allocatable :: sol(:,:)
+  ! format: sol(n_e_ops,ntraj,size(tlist),y(t))
+  complex(wp), allocatable :: sol(:,:,:,:)
 
   contains
 
@@ -54,30 +62,58 @@ module qutraj_run
   !  !call new(hamilt,nnz,nptr,val,col+1,ptr+1,nrows,ncols)
   !end subroutine
 
-  subroutine init_c_ops(i,n,val,col,ptr,m,k,nnz,nptr)
+  subroutine init_c_ops(i,n,val,col,ptr,m,k,nnz,nptr,first)
     integer, intent(in) :: i,n
     integer, intent(in) :: nnz,nptr,m,k
     complex(sp), intent(in) :: val(nnz)
     integer, intent(in) :: col(nnz),ptr(nptr)
-    if (.not.allocated(c_ops)) then
+    logical, optional :: first
+    if (.not.present(first)) then
+      first = .false.
+    endif
+    if (first) then
       call new(c_ops,n)
+    endif
+    if (.not.allocated(c_ops)) then
+      call error('init_c_ops: c_ops not allocated. call with first=True first.')
     endif
     n_c_ops = n
     call new(c_ops(i),nnz,nptr,val,col+1,ptr+1,m,k)
-    write(*,*) c_ops(i)%a
   end subroutine
 
-  subroutine init_odedata(neq,atol,rtol,mf,lzw,lrw,liw,ml,mu,natol,nrtol)
+  subroutine init_e_ops(i,n,val,col,ptr,m,k,nnz,nptr,first)
+    integer, intent(in) :: i,n
+    integer, intent(in) :: nnz,nptr,m,k
+    complex(sp), intent(in) :: val(nnz)
+    integer, intent(in) :: col(nnz),ptr(nptr)
+    logical, optional :: first
+    if (.not.present(first)) then
+      first = .false.
+    endif
+    if (first) then
+      call new(e_ops,n)
+    endif
+    if (.not.allocated(e_ops)) then
+      call error('init_e_ops: e_ops not allocated. call with first=True first.')
+    endif
+    n_e_ops = n
+    call new(e_ops(i),nnz,nptr,val,col+1,ptr+1,m,k)
+  end subroutine
+
+  subroutine init_odedata(neq,atol,rtol,max_step,mf,&
+      lzw,lrw,liw,ml,mu,natol,nrtol)
     integer, intent(in) :: neq
-    integer, intent(in), optional :: lzw,lrw,liw,mf
+    integer, intent(in), optional :: max_step,lzw,lrw,liw,mf
     integer, intent(in) :: natol,nrtol
-    double precision, intent(in) :: atol(natol), rtol(nrtol)
-    !double precision, optional :: atol,rtol
+    !real(sp), intent(in) :: atol(natol), rtol(nrtol)
+    double precision, optional :: atol(1),rtol(1)
     integer, intent(in), optional :: ml,mu
     integer :: istat
 
     ode%neq = neq
-    !allocate(ode%y(neq),stat=istat)
+    if (max_step.ne.0) then
+      ode%max_step = max_step
+    endif
     if (lzw.ne.0) then
       ode%lzw = lzw
     endif
@@ -119,14 +155,11 @@ module qutraj_run
       endif
     endif
 
-    allocate(ode%zwork(ode%lzw),stat=istat)
-    allocate(ode%rwork(ode%lrw),stat=istat)
-    allocate(ode%iwork(ode%liw),stat=istat)
-
-    allocate(ode%atol(size(atol)),stat=istat)
-    ode%atol = atol
-    allocate(ode%rtol(size(rtol)),stat=istat)
-    ode%rtol = rtol
+    call new(ode%zwork,ode%lzw)
+    call new(ode%rwork,ode%lrw)
+    call new(ode%iwork,ode%liw)
+    call new(ode%atol,atol)
+    call new(ode%rtol,rtol)
     if (size(ode%atol)==1) then
       ode%itol=1
     else
@@ -134,36 +167,18 @@ module qutraj_run
     endif
 
     ode%iopt = 0
-
-    if (istat.ne.0) then
-      call fatal_error("init_odedata: could not allocate.",istat)
-    endif
-  end subroutine
-
-  ! Deallocate everything
-
-  subroutine finalize_all
-    integer :: istat
-    !deallocate(ode%zwork,ode%rwork,ode%iwork,ode%atol,ode%rtol)
-    deallocate(tlist,sol,stat=istat)
-    if (istat.ne.0) then
-      call error("finalize_all: could not deallocate.",istat)
-    endif
-    !call finalize(tlist)
-    call finalize(psi0)
-    call finalize(work)
-    call finalize(hamilt)
-    call finalize(c_ops)
-    call finalize(ode)
   end subroutine
 
   ! Evolution
 
-  subroutine evolve
+  subroutine evolve(states)
+    ! Save states or expectation values?
+    logical, intent(in) :: states
     double precision :: t, tout, t_prev, t_final, t_guess
     double complex, allocatable :: y(:),y_prev(:),ynormed(:)
     integer :: istate,itask
-    integer :: istat,i,j,k
+    integer :: istat=0,i,j,k,traj,progress
+    integer :: l,m,n
     real(wp) :: nu,mu,norm2_psi,norm2_prev,norm2_guess,sump
     real(wp), allocatable :: p(:)
     complex(wp), allocatable :: tmp(:,:)
@@ -189,13 +204,36 @@ module qutraj_run
     !          in which case answers at T = TOUT are returned first).
 
     ! Allocate solution array
-    allocate(sol(size(tlist),ode%neq),stat=istat)
+    if (allocated(sol)) then
+      deallocate(sol,stat=istat)
+      if (istat.ne.0) then
+        call error("evolve: could not deallocate.",istat)
+      endif
+    endif
+    if (states) then
+      allocate(sol(1,ntraj,size(tlist),ode%neq),stat=istat)
+    else if (mc_avg) then
+      allocate(sol(n_e_ops,1,size(tlist),1),stat=istat)
+    else
+      allocate(sol(n_e_ops,ntraj,size(tlist),1),stat=istat)
+    endif
+    if (istat.ne.0) then
+      call fatal_error("evolve: could not allocate.",istat)
+    endif
+    sol = (0.,0.)
     ! Allocate solution
-    allocate(y(ode%neq),stat=istat)
-    allocate(y_prev(ode%neq),stat=istat)
-    allocate(ynormed(ode%neq),stat=istat)
+    call new(y,ode%neq)
+    call new(y_prev,ode%neq)
+    call new(ynormed,ode%neq)
     ! Allocate tmp array for jumps
-    allocate(p(n_c_ops),stat=istat)
+    call new(p,n_c_ops)
+    !allocate(p(n_c_ops),stat=istat)
+    if (allocated(tmp)) then
+      deallocate(tmp,stat=istat)
+      if (istat.ne.0) then
+        call error("evolve: could not deallocate.",istat)
+      endif
+    endif
     allocate(tmp(n_c_ops,ode%neq),stat=istat)
     if (istat.ne.0) then
       call fatal_error("evolve: could not allocate.",istat)
@@ -203,92 +241,169 @@ module qutraj_run
 
     ! integrate one step at the time, w/o overshooting
     itask = 5
-    ! first call to zvode
-    istate = 1
-    ! Initial values
-    y = psi0
-    norm2_psi = real(sum(conjg(y)*y))
+    ! use default values for optional args
+    ode%rwork = 0.0
+    ode%iwork = 0
+    ! set max. no of steps
+    ode%iwork(6) = ode%max_step
+    ode%iopt = 1
+    !write(*,*) ode%iwork(1)
 
     !write(*,*) ode%neq,ode%itol,ode%rtol,ode%atol
     !write(*,*) itask,istate,ode%iopt
     !write(*,*) ode%lzw,ode%lrw,ode%liw
     !write(*,*) ode%mf
 
-    ! Initalize rng
-    call init_genrand(1)
-    nu = grnd()
-    mu = grnd()
+    ! Loop over trajectories
+    progress = 0
+    do traj=1,ntraj
+      ! Initalize rng
+      call init_genrand(traj)
+      ! two random numbers
+      mu = grnd()
+      nu = grnd()
 
-    ! Initial value of indep. variable
-    t = tlist(i)
-    do i=1,size(tlist)
-      ! Solution wanted at
-      if (i==1) then
-        tout = t
-      else
-        tout = tlist(i)
+      ! first call to zvode
+      istate = 1
+      ! Initial values
+      y = psi0
+      ! Initial value of indep. variable
+      t = tlist(1)
+      do i=1,size(tlist)
+        ! Solution wanted at
+        if (i==1) then
+          tout = t
+        else
+          tout = tlist(i)
+        endif
         ode%rwork(1) = tout
-      endif
-
-      do while(t<tout)
-        t_prev = t
-        y_prev = y
-        norm2_prev = norm2_psi
-        call nojump(y,t,tout,itask,istate)
-        if (istate.lt.0) then
-          write(*,*) "zvode error: istate=",istate
-          stop
-        endif
-        ! prob of nojump
-        norm2_psi = real(sum(conjg(y)*y))
-        if (norm2_psi.le.nu) then
-          ! jump
-          ! find collapse time to specified tolerance
-          t_final = t
-          do k=1,norm_steps
-            t_guess=t_prev+log(norm2_prev/mu)&
-              /log(norm2_prev/norm2_psi)*(t_final-t_prev)
-            y = y_prev
-            t = t_prev
-            call nojump(y,t,t_guess,1,istate)
-            if (istate.lt.0) then
-              write(*,*) "zvode failed after adjusting step size. istate=",istate
-              stop
-            endif
-            norm2_guess = real(sum(conjg(y)*y))
-            if (abs(mu-norm2_guess) < norm_tol*mu) then
-                exit
-            elseif (norm2_guess < mu) then
-                ! t_guess is still > t_jump
-                t_final=t_guess
-                norm2_psi=norm2_guess
-            else
-                ! t_guess < t_jump
-                t_prev=t_guess
-                y_prev=y
-                norm2_prev=norm2_guess
-            endif
-          enddo
-          if (k > norm_steps) then
-            call error("Norm tolerance not reached. Increase accuracy of ODE solver or norm_steps.")
+        norm2_psi = real(braket(y,y))
+        !norm2_psi = real(sum(conjg(y)*y))
+        do while(t<tout)
+          t_prev = t
+          y_prev = y
+          norm2_prev = norm2_psi
+          call nojump(y,t,tout,itask,istate)
+          if (istate.lt.0) then
+            write(*,*) "zvode error: istate=",istate
+            !stop
           endif
-          ! determine which jump happened
-          do j=1,n_c_ops
-            call jump(j,y,tmp(j,:))
-            p(j) = real(sum(conjg(y)*y))
-            !p(j) = real(sum(conjg(y)*y))*delta_t
+          ! prob of nojump
+          norm2_psi = real(braket(y,y))
+          !norm2_psi = real(sum(conjg(y)*y))
+          if (norm2_psi.le.mu) then
+            ! jump happened
+            ! find collapse time to specified tolerance
+            t_final = t
+            do k=1,norm_steps
+              !t_guess=t_prev+(mu-norm2_prev)&
+              !  /(norm2_psi-norm2_prev)*(t_final-t_prev)
+              t_guess=t_prev+log(norm2_prev/mu)&
+                /log(norm2_prev/norm2_psi)*(t_final-t_prev)
+              !write(*,*) t_prev,t_guess,t,t_final
+              y = y_prev
+              t = t_prev
+              call nojump(y,t,t_guess,1,istate)
+              if (istate.lt.0) then
+                write(*,*) "zvode failed after adjusting step size. istate=",istate
+                !stop
+              endif
+              norm2_guess = real(braket(y,y))
+              !norm2_guess = real(sum(conjg(y)*y))
+              if (abs(mu-norm2_guess) < norm_tol*mu) then
+                  exit
+              elseif (norm2_guess < mu) then
+                  ! t_guess is still > t_jump
+                  t_final=t_guess
+                  norm2_psi=norm2_guess
+              else
+                  ! t_guess < t_jump
+                  t_prev=t_guess
+                  y_prev=y
+                  norm2_prev=norm2_guess
+              endif
+            enddo
+            if (k > norm_steps) then
+              call error("Norm tolerance not reached. Increase accuracy of ODE solver or norm_steps.")
+            endif
+            ! determine which jump happened
+            do j=1,n_c_ops
+              call jump(j,y,tmp(j,:))
+              p(j) = real(braket(tmp(j,:),tmp(j,:)))
+            enddo
+            p = p/sum(p)
+            sump = 0
+            do j=1,n_c_ops
+              if ((sump <= nu) .and. (nu < sump+p(j))) y = tmp(j,:)
+              sump = sump+p(j)
+            enddo
+            ! new random numbers
+            mu = grnd()
+            nu = grnd()
+            ! normalize y
+            !y = y/sqrt(real(braket(y,y)))
+            !y = y/sqrt(real(sum(conjg(y)*y)))
+            call normalize(y)
+          endif
+        enddo
+        !ynormed = y/sqrt(real(braket(y,y)))
+        !ynormed = y/sqrt(real(sum(conjg(y)*y)))
+        ynormed = y
+        call normalize(ynormed)
+        !write(*,*) real(sum(conjg(ynormed)*ynormed))
+        if (states) then
+          sol(1,traj,i,:) = ynormed
+        else if (mc_avg) then
+          do l=1,n_e_ops
+            sol(l,1,i,1) = sol(l,1,i,1)+braket(ynormed,e_ops(l)*ynormed)
           enddo
-          p = p/sum(p)
-          sump = 0
-          do j=1,n_c_ops
-            if ((sump <= mu) .and. (mu < sump+p(j))) y = tmp(j,:)
-            sump = sump+p(j)
-          enddo
+        else
+          exit
         endif
+        ! End time loop
       enddo
-      ynormed = y/sqrt(real(sum(conjg(y)*y)))
-      sol(i,:) = y
+      ! Indicate progress
+      !if (mod(traj,ntraj/10)==0) then
+      !  progress=progress+1
+      !  write(*,*) progress*10, "%"
+      !endif
+      ! End loop over trajectories
     enddo
+    ! normalize
+    if (.not.states .and. mc_avg) then
+      sol = sol/ntraj
+    endif
+    ! Deallocate
+    call finalize(y)
+    call finalize(y_prev)
+    call finalize(ynormed)
+    call finalize(p)
+    deallocate(tmp,stat=istat)
+    !deallocate(y,y_prev,ynormed,p,tmp,stat=istat)
+    if (istat.ne.0) then
+      call error("evolve: could not allocate.",istat)
+    endif
+    !write(*,*) sol
+  end subroutine
+
+  ! Deallocate everything
+
+  subroutine finalize_all
+    integer :: istat=0
+    !deallocate(ode%zwork,ode%rwork,ode%iwork,ode%atol,ode%rtol)
+    if (allocated(sol)) then
+      deallocate(sol,stat=istat)
+    endif
+    if (istat.ne.0) then
+      call error("finalize_all: could not deallocate.",istat)
+    endif
+    call finalize(tlist)
+    call finalize(psi0)
+    call finalize(work)
+    call finalize(hamilt)
+    call finalize(c_ops)
+    call finalize(e_ops)
+    call finalize(ode)
   end subroutine
 
   ! Misc

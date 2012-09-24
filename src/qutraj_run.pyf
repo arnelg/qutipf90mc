@@ -10,11 +10,12 @@ python module qutraj_run ! in
             integer, parameter :: sp=4
             integer, parameter :: wp=8
             integer, optional :: ntraj=1
+            logical, optional :: mc_avg = .true.
             double precision, allocatable,dimension(:) :: tlist
             integer, optional :: norm_steps=5
             complex(kind=wp), allocatable,dimension(:) :: psi0
             real(kind=wp), optional :: norm_tol=0.001
-            complex(kind=wp), allocatable,dimension(:,:) :: sol
+            complex(kind=wp), allocatable,dimension(:,:,:,:) :: sol
             subroutine init_tlist(val,n) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 real(kind=sp) dimension(n),intent(in) :: val
                 integer, optional,intent(in),check(len(val)>=n),depend(val) :: n=len(val)
@@ -34,7 +35,7 @@ python module qutraj_run ! in
                 !integer intent(in) :: nnz
                 !integer intent(in) :: nptr
             end subroutine init_hamiltonian
-            subroutine init_c_ops(i,n,val,col,ptr,m,k,nnz,nptr) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+            subroutine init_c_ops(i,n,val,col,ptr,m,k,nnz,nptr,first) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 integer intent(in) :: i
                 integer intent(in) :: n
                 complex(kind=sp) dimension(nnz),intent(in) :: val
@@ -44,11 +45,25 @@ python module qutraj_run ! in
                 integer intent(in) :: k
                 integer, optional,intent(in),check(len(val)>=nnz),depend(val) :: nnz=len(val)
                 integer, optional,intent(in),check(len(ptr)>=nptr),depend(ptr) :: nptr=len(ptr)
+                logical, optional :: first
             end subroutine init_c_ops
-            subroutine init_odedata(neq,atol,rtol,mf,lzw,lrw,liw,ml,mu,natol,nrtol) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+            subroutine init_e_ops(i,n,val,col,ptr,m,k,nnz,nptr,first) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+                integer intent(in) :: i
+                integer intent(in) :: n
+                complex(kind=sp) dimension(nnz),intent(in) :: val
+                integer dimension(nnz),intent(in),depend(nnz) :: col
+                integer dimension(nptr),intent(in) :: ptr
+                integer intent(in) :: m
+                integer intent(in) :: k
+                integer, optional,intent(in),check(len(val)>=nnz),depend(val) :: nnz=len(val)
+                integer, optional,intent(in),check(len(ptr)>=nptr),depend(ptr) :: nptr=len(ptr)
+                logical, optional :: first
+            end subroutine init_e_ops
+            subroutine init_odedata(neq,atol,rtol,max_step,mf,lzw,lrw,liw,ml,mu,natol,nrtol) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 integer intent(in) :: neq
                 double precision dimension(natol),intent(in) :: atol
                 double precision dimension(nrtol),intent(in) :: rtol
+                integer, optional,intent(in) :: max_step = 0
                 integer, optional,intent(in) :: mf = 0
                 integer, optional,intent(in) :: lzw = 0
                 integer, optional,intent(in) :: lrw = 0
@@ -60,7 +75,8 @@ python module qutraj_run ! in
             end subroutine init_odedata
             subroutine finalize_all ! in :qutraj_run:qutraj_run.f90:qutraj_run
             end subroutine finalize_all
-            subroutine evolve ! in :qutraj_run:qutraj_run.f90:qutraj_run
+            subroutine evolve(states) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+                logical intent(in) :: states
             end subroutine evolve
             subroutine test_real_precision ! in :qutraj_run:qutraj_run.f90:qutraj_run
             end subroutine test_real_precision

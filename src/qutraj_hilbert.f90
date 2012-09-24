@@ -61,6 +61,7 @@ module qutraj_hilbert
   end interface
 
   interface operator(*)
+    !module procedure state_state_mult
     module procedure operat_state_mult
   end interface
 
@@ -78,9 +79,10 @@ module qutraj_hilbert
     !type(state), intent(out) :: this
     complex(wp), allocatable :: this(:)
     integer, intent(in) :: n
-    integer :: istat
-    !this%n = n
-    !allocate(this%x(n),stat=istat)
+    integer :: istat=0
+    if (allocated(this)) then
+      deallocate(this,stat=istat)
+    endif
     allocate(this(n),stat=istat)
     if (istat.ne.0) then
       call fatal_error("state_init: could not allocate.",istat)
@@ -97,8 +99,10 @@ module qutraj_hilbert
   subroutine state_finalize(this)
     !type(state), intent(inout) :: this
     complex(wp), allocatable :: this(:)
-    integer :: istat
-    deallocate(this,stat=istat)
+    integer :: istat=0
+    if (allocated(this)) then
+      deallocate(this,stat=istat)
+    endif
     if (istat.ne.0) then
       call error("state_finalize: could not deallocate.",istat)
     endif
@@ -108,11 +112,32 @@ module qutraj_hilbert
     ! todo: add special support for Hermitian matrix
     type(operat), intent(out) :: this
     integer, intent(in) :: nnz,nptr
-    integer :: istat
+    integer :: istat=0
     this%nnz = nnz
+    if (allocated(this%a)) then
+      deallocate(this%a,stat=istat)
+    endif
+    if (allocated(this%ia1)) then
+      deallocate(this%ia1,stat=istat)
+    endif
+    if (allocated(this%pb)) then
+      deallocate(this%pb,stat=istat)
+    endif
+    if (allocated(this%pe)) then
+      deallocate(this%pe,stat=istat)
+    endif
     allocate(this%a(nnz),stat=istat)
+    if (istat.ne.0) then
+      call fatal_error("operat_init: could not allocate.",istat)
+    endif
     allocate(this%ia1(nnz),stat=istat)
+    if (istat.ne.0) then
+      call fatal_error("operat_init: could not allocate.",istat)
+    endif
     allocate(this%pb(nptr),stat=istat)
+    if (istat.ne.0) then
+      call fatal_error("operat_init: could not allocate.",istat)
+    endif
     allocate(this%pe(nptr),stat=istat)
     if (istat.ne.0) then
       call fatal_error("operat_init: could not allocate.",istat)
@@ -149,6 +174,9 @@ module qutraj_hilbert
     type(operat), intent(inout), allocatable :: this(:)
     integer, intent(in) :: n
     integer :: istat
+    if (allocated(this)) then
+      deallocate(this,stat=istat)
+    endif
     allocate(this(n),stat=istat)
     if (istat.ne.0) then
       call fatal_error("operat_list_init: could not allocate.",istat)
@@ -157,28 +185,70 @@ module qutraj_hilbert
 
   subroutine operat_finalize(this)
     type(operat), intent(inout) :: this
-    integer :: istat
-    deallocate(this%a,this%ia1,this%pb,this%pe,stat=istat)
-    if (istat.ne.0) then
-      call error("operat_finalize: could not deallocate.",istat)
+    integer :: istat=0
+    if (allocated(this%a)) then
+      deallocate(this%a,stat=istat)
+      if (istat.ne.0) then
+        call error("operat_finalize: could not deallocate.",istat)
+      endif
+    endif
+    if (allocated(this%ia1)) then
+      deallocate(this%ia1,stat=istat)
+      if (istat.ne.0) then
+        call error("operat_finalize: could not deallocate.",istat)
+      endif
+    endif
+    if (allocated(this%pb)) then
+      deallocate(this%pb,stat=istat)
+      if (istat.ne.0) then
+        call error("operat_finalize: could not deallocate.",istat)
+      endif
+    endif
+    if (allocated(this%pe)) then
+      deallocate(this%pe,stat=istat)
+      if (istat.ne.0) then
+        call error("operat_finalize: could not deallocate.",istat)
+      endif
     endif
   end subroutine
 
   subroutine operat_list_finalize(this)
     type(operat), intent(inout), allocatable :: this(:)
-    integer :: istat,i
-    do i=1,size(this)
-      call finalize(this(i))
-    enddo
-    deallocate(this,stat=istat)
+    integer :: istat=0,i
+    if (allocated(this)) then
+      do i=1,size(this)
+        call finalize(this(i))
+      enddo
+      deallocate(this,stat=istat)
+    endif
     if (istat.ne.0) then
       call error("operat_list_finalize: could not deallocate.",istat)
     endif
   end subroutine
 
   !
-  ! Matrix vector multiplicatoin
+  ! State/operator arithmetic
   !
+
+  function braket(fi,psi)
+    ! return <fi|psi>
+    complex(wp) :: braket
+    complex(wp), intent(in) :: fi(:),psi(:)
+    braket = sum(conjg(fi)*psi)
+  end function
+
+  subroutine normalize(psi)
+    complex(wp), intent(inout) :: psi(:)
+    real(wp) :: tmp
+    tmp = sqrt(real(braket(psi,psi)))
+    ! Check for division by zero
+    if (abs(tmp) < epsi) then
+      psi = 0.
+    else
+      psi = psi/tmp
+    end if
+  end subroutine
+
 
   function operat_state_mult(oper,psi)
     complex(wp), pointer :: operat_state_mult(:)
