@@ -187,13 +187,13 @@ module qutraj_solver
       ode%iwork,ode%liw,dummy_jac,ode%mf,ode%rpar,ode%ipar)
   end subroutine
 
-  subroutine jump(j,y,tmp)
-    ! tmp = c_ops(j)*y
-    integer, intent(in) :: j
-    double complex, intent(in) :: y(:)
-    double complex, intent(out) :: tmp(:)
-    tmp = c_ops(j)*y
-  end subroutine
+  !subroutine jump(j,y,tmp)
+  !  ! tmp = c_ops(j)*y
+  !  integer, intent(in) :: j
+  !  double complex, intent(in) :: y(:)
+  !  double complex, intent(out) :: tmp(:)
+  !  tmp = c_ops(j)*y
+  !end subroutine
 
 end module
 

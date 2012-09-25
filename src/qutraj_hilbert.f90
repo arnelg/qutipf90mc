@@ -13,7 +13,7 @@ module qutraj_hilbert
     ! Operators are represented as spare matrices
     ! stored in compressed row format (CSR)
 
-    ! m = number of cols, k = number of rows
+    ! m = number of rows, k = number of cols
     integer :: m,k
     ! number of values
     integer :: nnz
@@ -164,10 +164,10 @@ module qutraj_hilbert
     this%a = val
     this%ia1 = col
     this%pb = ptr
-    do i=1,nnz-1
+    do i=1,nptr-1
       this%pe(i) = this%pb(i+1)
     enddo
-    this%pe(nnz) = nnz+1
+    this%pe(nptr) = nnz+1
   end subroutine
 
   subroutine operat_list_init(this,n)
@@ -240,7 +240,7 @@ module qutraj_hilbert
   subroutine normalize(psi)
     complex(wp), intent(inout) :: psi(:)
     real(wp) :: tmp
-    tmp = sqrt(real(braket(psi,psi)))
+    tmp = sqrt(abs(braket(psi,psi)))
     ! Check for division by zero
     if (abs(tmp) < epsi) then
       psi = 0.
@@ -249,28 +249,32 @@ module qutraj_hilbert
     end if
   end subroutine
 
-
   function operat_state_mult(oper,psi)
-    complex(wp), pointer :: operat_state_mult(:)
-    type(operat), intent(in) :: oper
     complex(wp), intent(in) :: psi(:)
-    !complex(wp), allocatable :: work
+    type(operat), intent(in) :: oper
+    complex(wp):: operat_state_mult(size(psi))
+    complex(wp), allocatable :: tmp(:)
     integer :: ierr
+    !integer, allocatable :: ost(:)
 
-    !if (psi%n.ne.work%n) then
-    if (size(psi).ne.size(work)) then
-      write(*,*) "operate_state_mult: state has wrong size:",size(psi)
-      write(*,*) "should be:",size(work)
-      write(*,*) "have you properly initialized 'work' state?"
-      call fatal_error
-      return
-    endif
-    !call sparse_mv_mult(oper,psi%x,work%x,ierr)
-    call sparse_mv_mult(oper,psi,work,ierr)
+    !if (size(psi).ne.size(work)) then
+    !  write(*,*) "operate_state_mult: state has wrong size:",size(psi)
+    !  write(*,*) "should be:",size(work)
+    !  write(*,*) "have you properly initialized 'work' state?"
+    !  call fatal_error
+    !  return
+    !endif
+    call new(tmp,size(psi))
+    call sparse_mv_mult(oper,psi,tmp,ierr)
     if (ierr.ne.0) then
       call error("operate_state_mult: error",ierr)
     endif
-    operat_state_mult => work
+    !allocate(ost(size(oper%pb)+1))
+    !ost = oper%pb
+    !ost(size(ost)) = oper%nnz+1
+    !call amux(oper%k,psi,work,oper%a,oper%ia1,ost)
+    operat_state_mult = tmp
+    call finalize(tmp)
   end function
 
   subroutine sparse_mv_mult(mat,x,y,ierr)
@@ -389,5 +393,67 @@ module qutraj_hilbert
        ierr = 0
     end if
   end subroutine
+
+
+  subroutine amux ( n, x, y, a, ja, ia )
+  ! Aadapted from sparsekit
+
+  !*****************************************************************************80
+  !
+  !! AMUX multiplies a CSR matrix A times a vector.
+  !
+  !  Discussion:
+  !
+  !    This routine multiplies a matrix by a vector using the dot product form.
+  !    Matrix A is stored in compressed sparse row storage.
+  !
+  !  Modified:
+  !
+  !    07 January 2004
+  !
+  !  Author:
+  !
+  !    Youcef Saad
+  !
+  !  Parameters:
+  !
+  !    Input, integer N, the row dimension of the matrix.
+  !
+  !    Input, real X(*), and array of length equal to the column dimension 
+  !    of A.
+  !
+  !    Input, real A(*), integer JA(*), IA(NROW+1), the matrix in CSR
+  !    Compressed Sparse Row format.
+  !
+  !    Output, real Y(N), the product A * X.
+  !
+    implicit none
+
+    integer n
+
+    complex ( kind = wp ) a(*)
+    integer i
+    integer ia(*)
+    integer ja(*)
+    integer k
+    complex ( kind = wp ) t
+    complex ( kind = wp ) x(*)
+    complex ( kind = wp ) y(n)
+
+    do i = 1, n
+  !
+  !  Compute the inner product of row I with vector X.
+  !
+      t = (0.0,0.0)
+      do k = ia(i), ia(i+1)-1
+        t = t + a(k) * x(ja(k))
+      end do
+
+      y(i) = t
+
+    end do
+
+    return
+  end
 
 end module

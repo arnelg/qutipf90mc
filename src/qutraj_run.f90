@@ -98,6 +98,7 @@ module qutraj_run
     endif
     n_e_ops = n
     call new(e_ops(i),nnz,nptr,val,col+1,ptr+1,m,k)
+    !write(*,*) e_ops(i)*psi0
   end subroutine
 
   subroutine init_odedata(neq,atol,rtol,max_step,mf,&
@@ -178,10 +179,10 @@ module qutraj_run
     double complex, allocatable :: y(:),y_prev(:),ynormed(:)
     integer :: istate,itask
     integer :: istat=0,i,j,k,traj,progress
-    integer :: l,m,n
+    integer :: l,m,n,cnt
     real(wp) :: nu,mu,norm2_psi,norm2_prev,norm2_guess,sump
     real(wp), allocatable :: p(:)
-    complex(wp), allocatable :: tmp(:,:)
+    !complex(wp), allocatable :: tmp(:,:)
     ! ITASK  = An index specifying the task to be performed.
     !          Input only.  ITASK has the following values and meanings.
     !          1  means normal computation of output values of y(t) at
@@ -225,19 +226,8 @@ module qutraj_run
     call new(y,ode%neq)
     call new(y_prev,ode%neq)
     call new(ynormed,ode%neq)
-    ! Allocate tmp array for jumps
+    ! Allocate tmp array for jump probabilities
     call new(p,n_c_ops)
-    !allocate(p(n_c_ops),stat=istat)
-    if (allocated(tmp)) then
-      deallocate(tmp,stat=istat)
-      if (istat.ne.0) then
-        call error("evolve: could not deallocate.",istat)
-      endif
-    endif
-    allocate(tmp(n_c_ops,ode%neq),stat=istat)
-    if (istat.ne.0) then
-      call fatal_error("evolve: could not allocate.",istat)
-    endif
 
     ! integrate one step at the time, w/o overshooting
     itask = 5
@@ -247,16 +237,29 @@ module qutraj_run
     ! set max. no of steps
     ode%iwork(6) = ode%max_step
     ode%iopt = 1
-    !write(*,*) ode%iwork(1)
 
     !write(*,*) ode%neq,ode%itol,ode%rtol,ode%atol
     !write(*,*) itask,istate,ode%iopt
     !write(*,*) ode%lzw,ode%lrw,ode%liw
     !write(*,*) ode%mf
 
+    !write(*,*) psi0
+    !write(*,*) c_ops(1)*psi0
+
+    !write(*,*) c_ops(1)%a
+    !write(*,*) c_ops(1)%ia1
+    !write(*,*) c_ops(1)%pb
+    !write(*,*) c_ops(1)%pe
+    !write(*,*) c_ops(1)%m,e_ops(1)%k,c_ops(1)%nnz
+
     ! Loop over trajectories
-    progress = 0
+    progress = 1
     do traj=1,ntraj
+      ! Indicate progress
+      if (traj.ge.progress*ntraj/10.0) then
+        write(*,*) progress*10, "%"
+        progress=progress+1
+      endif
       ! Initalize rng
       call init_genrand(traj)
       ! two random numbers
@@ -270,6 +273,7 @@ module qutraj_run
       ! Initial value of indep. variable
       t = tlist(1)
       do i=1,size(tlist)
+        ynormed = y
         ! Solution wanted at
         if (i==1) then
           tout = t
@@ -277,30 +281,33 @@ module qutraj_run
           tout = tlist(i)
         endif
         ode%rwork(1) = tout
-        norm2_psi = real(braket(y,y))
-        !norm2_psi = real(sum(conjg(y)*y))
+        norm2_psi = abs(braket(y,y))
         do while(t<tout)
           t_prev = t
           y_prev = y
           norm2_prev = norm2_psi
           call nojump(y,t,tout,itask,istate)
+          ynormed = y
           if (istate.lt.0) then
             write(*,*) "zvode error: istate=",istate
             !stop
           endif
           ! prob of nojump
-          norm2_psi = real(braket(y,y))
-          !norm2_psi = real(sum(conjg(y)*y))
+          norm2_psi = abs(braket(y,y))
           if (norm2_psi.le.mu) then
             ! jump happened
             ! find collapse time to specified tolerance
             t_final = t
+            cnt=1
             do k=1,norm_steps
               !t_guess=t_prev+(mu-norm2_prev)&
               !  /(norm2_psi-norm2_prev)*(t_final-t_prev)
               t_guess=t_prev+log(norm2_prev/mu)&
                 /log(norm2_prev/norm2_psi)*(t_final-t_prev)
-              !write(*,*) t_prev,t_guess,t,t_final
+              if (t_guess<t_prev .or. t_guess>t_final) then
+                t_guess = t_prev+0.5*(t_final-t_prev)
+              endif
+              !write(*,*) t_prev,t_guess,t_final
               y = y_prev
               t = t_prev
               call nojump(y,t,t_guess,1,istate)
@@ -308,8 +315,7 @@ module qutraj_run
                 write(*,*) "zvode failed after adjusting step size. istate=",istate
                 !stop
               endif
-              norm2_guess = real(braket(y,y))
-              !norm2_guess = real(sum(conjg(y)*y))
+              norm2_guess = abs(braket(y,y))
               if (abs(mu-norm2_guess) < norm_tol*mu) then
                   exit
               elseif (norm2_guess < mu) then
@@ -322,35 +328,35 @@ module qutraj_run
                   y_prev=y
                   norm2_prev=norm2_guess
               endif
+              cnt = cnt+1
             enddo
-            if (k > norm_steps) then
+            if (cnt > norm_steps) then
               call error("Norm tolerance not reached. Increase accuracy of ODE solver or norm_steps.")
             endif
-            ! determine which jump happened
+            ! determine which jump
             do j=1,n_c_ops
-              call jump(j,y,tmp(j,:))
-              p(j) = real(braket(tmp(j,:),tmp(j,:)))
+              p(j) = abs(braket(c_ops(j)*y,c_ops(j)*y))
             enddo
             p = p/sum(p)
             sump = 0
             do j=1,n_c_ops
-              if ((sump <= nu) .and. (nu < sump+p(j))) y = tmp(j,:)
+              if ((sump <= nu) .and. (nu < sump+p(j))) then
+                y = c_ops(j)*y
+              endif
               sump = sump+p(j)
             enddo
             ! new random numbers
             mu = grnd()
             nu = grnd()
             ! normalize y
-            !y = y/sqrt(real(braket(y,y)))
-            !y = y/sqrt(real(sum(conjg(y)*y)))
             call normalize(y)
+            ! reset, first call to zvode
+            istate = 1
+            !write(*,*) braket(y,e_ops(1)*y)
           endif
         enddo
-        !ynormed = y/sqrt(real(braket(y,y)))
-        !ynormed = y/sqrt(real(sum(conjg(y)*y)))
         ynormed = y
         call normalize(ynormed)
-        !write(*,*) real(sum(conjg(ynormed)*ynormed))
         if (states) then
           sol(1,traj,i,:) = ynormed
         else if (mc_avg) then
@@ -362,11 +368,6 @@ module qutraj_run
         endif
         ! End time loop
       enddo
-      ! Indicate progress
-      !if (mod(traj,ntraj/10)==0) then
-      !  progress=progress+1
-      !  write(*,*) progress*10, "%"
-      !endif
       ! End loop over trajectories
     enddo
     ! normalize
@@ -378,35 +379,40 @@ module qutraj_run
     call finalize(y_prev)
     call finalize(ynormed)
     call finalize(p)
-    deallocate(tmp,stat=istat)
-    !deallocate(y,y_prev,ynormed,p,tmp,stat=istat)
-    if (istat.ne.0) then
-      call error("evolve: could not allocate.",istat)
-    endif
     !write(*,*) sol
   end subroutine
 
-  ! Deallocate everything
+  ! Deallocate stuff
 
-  subroutine finalize_all
+  subroutine finalize_work
     integer :: istat=0
-    !deallocate(ode%zwork,ode%rwork,ode%iwork,ode%atol,ode%rtol)
-    if (allocated(sol)) then
-      deallocate(sol,stat=istat)
-    endif
-    if (istat.ne.0) then
-      call error("finalize_all: could not deallocate.",istat)
-    endif
-    call finalize(tlist)
     call finalize(psi0)
     call finalize(work)
     call finalize(hamilt)
     call finalize(c_ops)
     call finalize(e_ops)
     call finalize(ode)
+    !call finalize(tlist)
+    !if (allocated(sol)) then
+    !  deallocate(sol,stat=istat)
+    !endif
+    !if (istat.ne.0) then
+    !  call error("finalize_all: could not deallocate.",istat)
+    !endif
+  end subroutine
+  subroutine finalize_sol
+    integer :: istat=0
+    call finalize(tlist)
+    if (allocated(sol)) then
+      deallocate(sol,stat=istat)
+    endif
+    if (istat.ne.0) then
+      call error("finalize_all: could not deallocate.",istat)
+    endif
   end subroutine
 
   ! Misc
+
   subroutine test_real_precision
     real(wp) :: b,a
     integer :: i
@@ -417,7 +423,7 @@ module qutraj_run
     do while (b.ne.b+a)
       a = a*0.1
       if (b==b+a) then
-        write(*,*) "number of decimals precision: ",i-1
+        write(*,*) "number of decimals working precision: ",i-1
       endif
       i = i+1
     enddo

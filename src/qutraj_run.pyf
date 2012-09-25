@@ -73,11 +73,13 @@ python module qutraj_run ! in
                 integer, optional,intent(in),check(len(atol)>=natol),depend(atol) :: natol=len(atol)
                 integer, optional,intent(in),check(len(rtol)>=nrtol),depend(rtol) :: nrtol=len(rtol)
             end subroutine init_odedata
-            subroutine finalize_all ! in :qutraj_run:qutraj_run.f90:qutraj_run
-            end subroutine finalize_all
             subroutine evolve(states) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 logical intent(in) :: states
             end subroutine evolve
+            subroutine finalize_work ! in :qutraj_run:qutraj_run.f90:qutraj_run
+            end subroutine finalize_work
+            subroutine finalize_sol ! in :qutraj_run:qutraj_run.f90:qutraj_run
+            end subroutine finalize_sol
             subroutine test_real_precision ! in :qutraj_run:qutraj_run.f90:qutraj_run
             end subroutine test_real_precision
         end module qutraj_run
