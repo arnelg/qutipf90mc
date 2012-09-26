@@ -38,6 +38,8 @@ def configuration(parent_package='',top_path=None):
                          libraries=libs,
                          **newblas)
 
+    config.add_subpackage('examples')
+
     return config
 
 if (__name__ == '__main__'):

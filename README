@@ -1,3 +1,3 @@
-qutip_f90mc
+qutipf90mc
 
 The development of a "wave-function monte carlo" solver written in Fortran 90/95, with a python interface trough f2py. The program is intended to be used with the qutip python package.

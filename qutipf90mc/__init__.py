@@ -4,3 +4,4 @@
 #all = ['']
 
 from mcsolve_f90 import mcsolve_f90
+from tester import test
