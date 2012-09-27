@@ -56,14 +56,6 @@ module qutraj_run
     call new(hamilt,nnz,nptr,val,col+1,ptr+1,m,k)
   end subroutine
 
-  !subroutine init_hamiltonian(val,col,ptr,nnz,nptr,nrows,ncols)
-  !  integer, intent(in) :: nnz,nptr,nrows,ncols
-  !  complex(sp), intent(in)  :: val(nnz)
-  !  integer, intent(in) :: col(nnz),ptr(nptr)
-  !  write(*,*) col
-  !  !call new(hamilt,nnz,nptr,val,col+1,ptr+1,nrows,ncols)
-  !end subroutine
-
   subroutine init_c_ops(i,n,val,col,ptr,m,k,nnz,nptr,first)
     integer, intent(in) :: i,n
     integer, intent(in) :: nnz,nptr,m,k
@@ -100,7 +92,6 @@ module qutraj_run
     endif
     n_e_ops = n
     call new(e_ops(i),nnz,nptr,val,col+1,ptr+1,m,k)
-    !write(*,*) e_ops(i)*psi0
   end subroutine
 
   subroutine init_odedata(neq,atol,rtol,max_step,mf,&
@@ -174,10 +165,10 @@ module qutraj_run
 
   ! Evolution
 
-  subroutine evolve(states,rngseed)
+  subroutine evolve(states,instanceno)
     ! Save states or expectation values?
     logical, intent(in) :: states
-    integer, intent(in) :: rngseed
+    integer, intent(in) :: instanceno
     double precision :: t, tout, t_prev, t_final, t_guess
     double complex, allocatable :: y(:),y_prev(:),ynormed(:)
     integer :: istate,itask
@@ -185,7 +176,6 @@ module qutraj_run
     integer :: l,m,n,cnt
     real(wp) :: nu,mu,norm2_psi,norm2_prev,norm2_guess,sump
     real(wp), allocatable :: p(:)
-    !complex(wp), allocatable :: tmp(:,:)
     ! ITASK  = An index specifying the task to be performed.
     !          Input only.  ITASK has the following values and meanings.
     !          1  means normal computation of output values of y(t) at
@@ -241,31 +231,11 @@ module qutraj_run
     ode%iwork(6) = ode%max_step
     ode%iopt = 1
 
-    !write(*,*) ode%neq,ode%itol,ode%rtol,ode%atol
-    !write(*,*) itask,istate,ode%iopt
-    !write(*,*) ode%lzw,ode%lrw,ode%liw
-    !write(*,*) ode%mf
-
-    !write(*,*) psi0
-    !write(*,*) c_ops(1)*psi0
-
-    !write(*,*) c_ops(1)%a
-    !write(*,*) c_ops(1)%ia1
-    !write(*,*) c_ops(1)%pb
-    !write(*,*) c_ops(1)%pe
-    !write(*,*) c_ops(1)%m,e_ops(1)%k,c_ops(1)%nnz
-
     ! Loop over trajectories
     progress = 1
-    write(*,*) rngseed
     ! Initalize rng
-    call init_genrand((rngseed+1))
+    call init_genrand(instanceno)
     do traj=1,ntraj
-      ! Indicate progress
-      !if (traj.ge.progress*ntraj/10.0) then
-      !  write(*,*) progress*10, "%"
-      !  progress=progress+1
-      !endif
       ! two random numbers
       mu = grnd()
       nu = grnd()
@@ -356,7 +326,6 @@ module qutraj_run
             call normalize(y)
             ! reset, first call to zvode
             istate = 1
-            !write(*,*) braket(y,e_ops(1)*y)
           endif
         enddo
         ynormed = y
@@ -372,6 +341,11 @@ module qutraj_run
         endif
         ! End time loop
       enddo
+      ! Indicate progress
+      if (instanceno == 1 .and. traj.ge.progress*ntraj/10.0) then
+        write(*,*) "progress of process 1: ", progress*10, "%"
+        progress=progress+1
+      endif
       ! End loop over trajectories
     enddo
     ! normalize
@@ -383,7 +357,6 @@ module qutraj_run
     call finalize(y_prev)
     call finalize(ynormed)
     call finalize(p)
-    !write(*,*) sol
   end subroutine
 
   ! Deallocate stuff
@@ -396,13 +369,6 @@ module qutraj_run
     call finalize(c_ops)
     call finalize(e_ops)
     call finalize(ode)
-    !call finalize(tlist)
-    !if (allocated(sol)) then
-    !  deallocate(sol,stat=istat)
-    !endif
-    !if (istat.ne.0) then
-    !  call error("finalize_all: could not deallocate.",istat)
-    !endif
   end subroutine
   subroutine finalize_sol
     integer :: istat=0

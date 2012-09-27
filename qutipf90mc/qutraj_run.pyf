@@ -73,9 +73,9 @@ python module qutraj_run ! in
                 integer, optional,intent(in),check(len(atol)>=natol),depend(atol) :: natol=len(atol)
                 integer, optional,intent(in),check(len(rtol)>=nrtol),depend(rtol) :: nrtol=len(rtol)
             end subroutine init_odedata
-            subroutine evolve(states,rngseed) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+            subroutine evolve(states,instanceno) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 logical intent(in) :: states
-                integer intent(in) :: rngseed
+                integer intent(in) :: instanceno
             end subroutine evolve
             subroutine finalize_work ! in :qutraj_run:qutraj_run.f90:qutraj_run
             end subroutine finalize_work

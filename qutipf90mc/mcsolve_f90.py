@@ -98,7 +98,7 @@ class _MC_class():
         # run ntraj trajectories in parallell via fortran
         import qutraj_run as qt
         # get args
-        queue,ntraj,rngseed = args
+        queue,ntraj,instanceno = args
         def init_tlist(tlist):
             qt.qutraj_run.init_tlist(array(tlist,dtype=wpr))
         def init_psi0(psi0):
@@ -166,7 +166,7 @@ class _MC_class():
         #qt.qutraj_run.norm_tol=0.01
 
         #run
-        qt.qutraj_run.evolve(self.states,rngseed)
+        qt.qutraj_run.evolve(self.states,instanceno)
 
         # construct Odedata instance
         sol = Odedata()

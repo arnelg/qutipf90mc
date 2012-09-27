@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from qutip import *
 import qutipf90mc as mcf90
-import qutipf90mc.mcsolve_f90_v2 as par
 import time
 
 def test():
@@ -37,7 +36,7 @@ def test():
     #opts.rtol =
 
     start_time = time.time()
-    sol_f90 = par.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)
+    sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)
     print "solutiton took", time.time()-start_time, "s"
 
     start_time = time.time()
