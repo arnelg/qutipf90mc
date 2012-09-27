@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from qutip import *
 import qutipf90mc as mcf90
+import qutipf90mc.mcsolve_f90_v2 as par
 import time
 
 def test():
@@ -25,7 +26,7 @@ def test():
     nstep = int(T/dt)
     tlist = np.linspace(0,T,nstep)
 
-    ntraj=10
+    ntraj=10000
 
     # set options
     opts = Odeoptions()
@@ -36,20 +37,22 @@ def test():
     #opts.rtol =
 
     start_time = time.time()
-    #sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)
-    sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,[],ntraj=ntraj,options=opts)
+    sol_f90 = par.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)
     print "solutiton took", time.time()-start_time, "s"
 
     start_time = time.time()
     sol_me = mesolve(H,psi0,tlist,c_ops,e_ops,options=opts)
     print "solutiton took", time.time()-start_time, "s"
 
+    start_time = time.time()
+    sol_mc = mcsolve(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)
+    print "solutiton took", time.time()-start_time, "s"
 
-    #plt.figure()
-    #for i in range(len(e_ops)):
-    #    plt.plot(tlist,sol_f90.expect[i])
-    #    #plt.plot(tlist,sol_mc.expect[i],'--')
-    #    plt.plot(tlist,sol_me.expect[i],'--')
+    plt.figure()
+    for i in range(len(e_ops)):
+        plt.plot(tlist,sol_f90.expect[i],'b')
+        plt.plot(tlist,sol_mc.expect[i],'g')
+        plt.plot(tlist,sol_me.expect[i],'k')
 
     return sol_f90
 

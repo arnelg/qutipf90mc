@@ -5,6 +5,7 @@
 ! - return array of density matrices when mc_avg=.true.
 !
 module qutraj_run
+  !f2py threadsafe
 
   use qutraj_precision
   use qutraj_general
@@ -173,9 +174,10 @@ module qutraj_run
 
   ! Evolution
 
-  subroutine evolve(states)
+  subroutine evolve(states,rngseed)
     ! Save states or expectation values?
     logical, intent(in) :: states
+    integer, intent(in) :: rngseed
     double precision :: t, tout, t_prev, t_final, t_guess
     double complex, allocatable :: y(:),y_prev(:),ynormed(:)
     integer :: istate,itask
@@ -255,14 +257,15 @@ module qutraj_run
 
     ! Loop over trajectories
     progress = 1
+    write(*,*) rngseed
+    ! Initalize rng
+    call init_genrand((rngseed+1))
     do traj=1,ntraj
       ! Indicate progress
-      if (traj.ge.progress*ntraj/10.0) then
-        write(*,*) progress*10, "%"
-        progress=progress+1
-      endif
-      ! Initalize rng
-      call init_genrand(traj)
+      !if (traj.ge.progress*ntraj/10.0) then
+      !  write(*,*) progress*10, "%"
+      !  progress=progress+1
+      !endif
       ! two random numbers
       mu = grnd()
       nu = grnd()
