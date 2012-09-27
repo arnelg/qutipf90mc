@@ -3,6 +3,7 @@
 !
 ! - optional arguments, see zvode.f
 ! - return array of density matrices when mc_avg=.true.
+! - represent states as csr matrices?
 !
 module qutraj_run
   !f2py threadsafe

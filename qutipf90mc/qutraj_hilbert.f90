@@ -456,4 +456,146 @@ module qutraj_hilbert
     return
   end
 
+subroutine amub ( nrow, ncol, job, a, ja, ia, b, jb, ib, c, jc, ic, nzmax, &
+  iw, ierr )
+  ! Aadapted from sparsekit
+
+!*****************************************************************************80
+!
+!! AMUB performs the matrix product C = A * B.
+!
+!  Discussion:
+!
+!    The column dimension of B is not needed.
+!
+!  Modified:
+!
+!    08 January 2004
+!
+!  Author:
+!
+!    Youcef Saad
+!
+!  Parameters:
+!
+!    Input, integer NROW, the row dimension of the matrix.
+!
+!    Input, integer NCOL, the column dimension of the matrix.
+!
+!    Input, integer JOB, job indicator.  When JOB = 0, only the structure
+!    is computed, that is, the arrays JC and IC, but the real values
+!    are ignored.
+!
+!    Input, real A(*), integer JA(*), IA(NROW+1), the matrix in CSR
+!    Compressed Sparse Row format.
+!
+!    Input, b, jb, ib, matrix B in compressed sparse row format.
+!
+!    Input, integer NZMAX, the length of the arrays c and jc.
+!    The routine will stop if the result matrix C  has a number
+!    of elements that exceeds exceeds NZMAX.
+!
+! on return:
+!
+! c,
+! jc,
+! ic    = resulting matrix C in compressed sparse row sparse format.
+!
+! ierr      = integer. serving as error message.
+!         ierr = 0 means normal return,
+!         ierr > 0 means that amub stopped while computing the
+!         i-th row  of C with i = ierr, because the number
+!         of elements in C exceeds nzmax.
+!
+! work arrays:
+!
+!  iw      = integer work array of length equal to the number of
+!         columns in A.
+!
+  implicit none
+
+  integer ncol
+  integer nrow
+  integer nzmax
+
+  real ( kind = wp ) a(*)
+  real ( kind = wp ) b(*)
+  real ( kind = wp ) c(nzmax)
+  integer ia(nrow+1)
+  integer ib(ncol+1)
+  integer ic(ncol+1)
+  integer ierr
+  integer ii
+  integer iw(ncol)
+  integer ja(*)
+  integer jb(*)
+  integer jc(nzmax)
+  integer jcol
+  integer jj
+  integer job
+  integer jpos
+  integer k
+  integer ka
+  integer kb
+  integer len
+  real ( kind = wp ) scal
+  logical values
+
+  values = ( job /= 0 )
+  len = 0
+  ic(1) = 1
+  ierr = 0
+!
+!  Initialize IW.
+!
+  iw(1:ncol) = 0
+
+  do ii = 1, nrow
+!
+!  Row I.
+!
+    do ka = ia(ii), ia(ii+1)-1
+
+      if ( values ) then
+        scal = a(ka)
+      end if
+
+      jj = ja(ka)
+
+      do kb = ib(jj), ib(jj+1)-1
+
+           jcol = jb(kb)
+           jpos = iw(jcol)
+
+           if ( jpos == 0 ) then
+              len = len + 1
+              if ( nzmax < len ) then
+                 ierr = ii
+                 return
+              end if
+              jc(len) = jcol
+              iw(jcol)= len
+              if ( values ) then
+                c(len) = scal * b(kb)
+              end if
+           else
+              if ( values ) then
+                c(jpos) = c(jpos) + scal * b(kb)
+              end if
+           end if
+
+         end do
+
+    end do
+
+    do k = ic(ii), len
+      iw(jc(k)) = 0
+    end do
+
+    ic(ii+1) = len + 1
+
+  end do
+
+  return
+end
 end module
