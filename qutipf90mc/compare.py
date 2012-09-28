@@ -26,6 +26,7 @@ def run(neq,ntraj,f90only=False):
     # set options
     opts = Odeoptions()
     opts.num_cpus = 1
+    opts.gui = False
 
     start_time = time.time()
     sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)

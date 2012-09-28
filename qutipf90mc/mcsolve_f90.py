@@ -99,38 +99,33 @@ class _MC_class():
         # get args
         queue,ntraj,instanceno = args
         def init_tlist(tlist):
-            qt.qutraj_run.init_tlist(array(tlist,dtype=wpr))
+            qt.qutraj_run.init_tlist(realarray_to_fortran(tlist),
+                    size(tlist))
         def init_psi0(psi0):
-            psi0d = array(psi0.data.toarray(),dtype=wpc).transpose()
+            psi0d = qobj_to_fortranfull(psi0)
             qt.qutraj_run.init_psi0(psi0d,size(psi0d))
         def init_hamilt(H,c_ops):
             # construct effective non-Hermitian Hamiltonian
             H_eff = H - 0.5j*sum([c_ops[i].dag()*c_ops[i]
                 for i in range(len(c_ops))])
-            datad = array(H_eff.data.data,dtype=wpc)
-            qt.qutraj_run.init_hamiltonian(datad,H_eff.data.indices,
-                    H_eff.data.indptr[0:size(H_eff.data.indptr)-1],
-                    H_eff.data.shape[0],H_eff.data.shape[1],
-                    H_eff.data.nnz,size(H_eff.data.indptr)-1)
+            Of = qobj_to_fortrancsr(H_eff)
+            qt.qutraj_run.init_hamiltonian(Of[0],Of[1],
+                    Of[2],Of[3],Of[4],Of[5],Of[6])
         def init_c_ops(c_ops):
             n = len(c_ops)
             first = True
             for i in range(n):
-                datad = array(c_ops[i].data.data,dtype=wpc)
-                qt.qutraj_run.init_c_ops(i+1,n,datad,c_ops[i].data.indices,
-                        c_ops[i].data.indptr[0:size(c_ops[i].data.indptr)-1],
-                        c_ops[i].data.shape[0],c_ops[i].data.shape[1],
-                        c_ops[i].data.nnz,size(c_ops[i].data.indptr)-1,first)
+                Of = qobj_to_fortrancsr(c_ops[i])
+                qt.qutraj_run.init_c_ops(i,n,Of[0],Of[1],
+                        Of[2],Of[3],Of[4],Of[5],Of[6],first)
                 first = False
         def init_e_ops(e_ops):
             n = len(e_ops)
             first = True
             for i in range(n):
-                datad = array(e_ops[i].data.data,dtype=wpc)
-                qt.qutraj_run.init_e_ops(i+1,n,datad,e_ops[i].data.indices,
-                        e_ops[i].data.indptr[0:size(e_ops[i].data.indptr)-1],
-                        e_ops[i].data.shape[0],e_ops[i].data.shape[1],
-                        e_ops[i].data.nnz,size(e_ops[i].data.indptr)-1,first)
+                Of = qobj_to_fortrancsr(e_ops[i])
+                qt.qutraj_run.init_e_ops(i,n,Of[0],Of[1],
+                        Of[2],Of[3],Of[4],Of[5],Of[6],first)
                 first = False
         def get_states(nstep,ntraj):
             states=array([array([Qobj()]*nstep)]*ntraj)
@@ -180,3 +175,22 @@ class _MC_class():
             sol.expect = get_expect(size(self.tlist),size(self.e_ops))
         queue.put(sol)
         return
+
+def realarray_to_fortran(a):
+    datad = np.asfortranarray(np.array(a,dtype=wpr))
+    return datad
+
+def qobj_to_fortranfull(A):
+    datad = np.asfortranarray(np.array(A.data.toarray(),dtype=wpc))
+    return datad
+
+def qobj_to_fortrancsr(A):
+    datad = np.asfortranarray(np.array(A.data.data,dtype=wpc))
+    indices = np.asfortranarray(np.array(A.data.indices))
+    indptr = np.asfortranarray(np.array(A.data.indptr[0:size(A.data.indptr)-1]))
+    m = A.data.shape[0]
+    k = A.data.shape[1]
+    nnz = A.data.nnz
+    nptr = size(A.data.indptr)-1
+    return datad,indices,indptr,m,k,nnz,nptr
+

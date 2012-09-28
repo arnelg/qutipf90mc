@@ -47,7 +47,6 @@ module qutraj_run
     complex(sp), intent(in) :: val(n)
     integer, intent(in) :: n
     call new(psi0,val)
-    call new(work,n)
   end subroutine
 
   subroutine init_hamiltonian(val,col,ptr,m,k,nnz,nptr)
@@ -73,7 +72,7 @@ module qutraj_run
       call error('init_c_ops: c_ops not allocated. call with first=True first.')
     endif
     n_c_ops = n
-    call new(c_ops(i),nnz,nptr,val,col+1,ptr+1,m,k)
+    call new(c_ops(i+1),nnz,nptr,val,col+1,ptr+1,m,k)
   end subroutine
 
   subroutine init_e_ops(i,n,val,col,ptr,m,k,nnz,nptr,first)
@@ -92,7 +91,7 @@ module qutraj_run
       call error('init_e_ops: e_ops not allocated. call with first=True first.')
     endif
     n_e_ops = n
-    call new(e_ops(i),nnz,nptr,val,col+1,ptr+1,m,k)
+    call new(e_ops(i+1),nnz,nptr,val,col+1,ptr+1,m,k)
   end subroutine
 
   subroutine init_odedata(neq,atol,rtol,max_step,mf,&
@@ -248,7 +247,6 @@ module qutraj_run
       ! Initial value of indep. variable
       t = tlist(1)
       do i=1,size(tlist)
-        ynormed = y
         ! Solution wanted at
         if (i==1) then
           tout = t
@@ -262,7 +260,6 @@ module qutraj_run
           y_prev = y
           norm2_prev = norm2_psi
           call nojump(y,t,tout,itask,istate)
-          ynormed = y
           if (istate.lt.0) then
             write(*,*) "zvode error: istate=",istate
             !stop
@@ -282,7 +279,6 @@ module qutraj_run
               if (t_guess<t_prev .or. t_guess>t_final) then
                 t_guess = t_prev+0.5*(t_final-t_prev)
               endif
-              !write(*,*) t_prev,t_guess,t_final
               y = y_prev
               t = t_prev
               call nojump(y,t,t_guess,1,istate)
@@ -365,7 +361,6 @@ module qutraj_run
   subroutine finalize_work
     integer :: istat=0
     call finalize(psi0)
-    call finalize(work)
     call finalize(hamilt)
     call finalize(c_ops)
     call finalize(e_ops)
