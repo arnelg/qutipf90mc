@@ -100,28 +100,29 @@ class _MC_class():
                 self.sol.expect[i] = self.sol.expect[i]/self.ncpus
 
     def solve_serial(self,args):
-        # run ntraj trajectories in parallell via fortran
+        # run ntraj trajectories in for one process via fortran
         import qutraj_run as qt
         # get args
         queue,ntraj,instanceno = args
+        # initalizers
         def init_tlist(tlist):
-            qt.qutraj_run.init_tlist(realarray_to_fortran(tlist),
+            qt.qutraj_run.init_tlist(_realarray_to_fortran(tlist),
                     size(tlist))
         def init_psi0(psi0):
-            psi0d = qobj_to_fortranfull(psi0)
+            psi0d = _qobj_to_fortranfull(psi0)
             qt.qutraj_run.init_psi0(psi0d,size(psi0d))
         def init_hamilt(H,c_ops):
             # construct effective non-Hermitian Hamiltonian
             H_eff = H - 0.5j*sum([c_ops[i].dag()*c_ops[i]
                 for i in range(len(c_ops))])
-            Of = qobj_to_fortrancsr(H_eff)
+            Of = _qobj_to_fortrancsr(H_eff)
             qt.qutraj_run.init_hamiltonian(Of[0],Of[1],
                     Of[2],Of[3],Of[4],Of[5],Of[6])
         def init_c_ops(c_ops):
             n = len(c_ops)
             first = True
             for i in range(n):
-                Of = qobj_to_fortrancsr(c_ops[i])
+                Of = _qobj_to_fortrancsr(c_ops[i])
                 qt.qutraj_run.init_c_ops(i,n,Of[0],Of[1],
                         Of[2],Of[3],Of[4],Of[5],Of[6],first)
                 first = False
@@ -129,7 +130,7 @@ class _MC_class():
             n = len(e_ops)
             first = True
             for i in range(n):
-                Of = qobj_to_fortrancsr(e_ops[i])
+                Of = _qobj_to_fortrancsr(e_ops[i])
                 qt.qutraj_run.init_e_ops(i,n,Of[0],Of[1],
                         Of[2],Of[3],Of[4],Of[5],Of[6],first)
                 first = False
@@ -184,18 +185,23 @@ class _MC_class():
             sol.states = get_states(size(self.tlist),ntraj)
         else:
             sol.expect = get_expect(size(self.tlist),size(self.e_ops))
+        # put to queue
         queue.put(sol)
         return
 
-def realarray_to_fortran(a):
+#
+# Misc. converison functions
+#
+
+def _realarray_to_fortran(a):
     datad = np.asfortranarray(np.array(a,dtype=wpr))
     return datad
 
-def qobj_to_fortranfull(A):
+def _qobj_to_fortranfull(A):
     datad = np.asfortranarray(np.array(A.data.toarray(),dtype=wpc))
     return datad
 
-def qobj_to_fortrancsr(A):
+def _qobj_to_fortrancsr(A):
     datad = np.asfortranarray(np.array(A.data.data,dtype=wpc))
     indices = np.asfortranarray(np.array(A.data.indices))
     indptr = np.asfortranarray(np.array(A.data.indptr[0:size(A.data.indptr)-1]))

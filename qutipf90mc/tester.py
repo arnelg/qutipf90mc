@@ -55,5 +55,18 @@ def test():
 
     return sol_f90
 
+def testdemos():
+    import qutipf90mc.examples as examples
+    print 'running demo #30 from qutip'
+    raw_input('press a key to continue')
+    plt.figure()
+    ex_code = compile('examples.ex_30.run()','<string>','exec')
+    eval(ex_code)
+    print 'running demo #31 from qutip'
+    raw_input('press a key to continue')
+    plt.figure()
+    ex_code = compile('examples.ex_31.run()','<string>','exec')
+    eval(ex_code)
+
 if __name__ == '__main__':
     test()

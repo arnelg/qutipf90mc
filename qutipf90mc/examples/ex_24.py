@@ -71,7 +71,8 @@ def run():
     # set up the calculation
     #
     
-    solver = "mc"   # select solver "me" or "mc" or "mcf90"
+    solver = "mcf90"   # select solver "me" or "mc" or "mcf90"
+    #solver = "mc"   # select solver "me" or "mc" or "mcf90"
     N = 4           # number of spins
     
     # array of spin energy splittings and coupling strengths. here we use

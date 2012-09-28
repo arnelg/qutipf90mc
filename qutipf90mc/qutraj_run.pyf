@@ -89,6 +89,3 @@ python module qutraj_run ! in
             end subroutine test_real_precision
         end module qutraj_run
 end python module qutraj_run
-
-! This file was auto-generated with f2py (version:2).
-! See http://cens.ioc.ee/projects/f2py2e/
