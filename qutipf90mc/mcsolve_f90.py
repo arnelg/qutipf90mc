@@ -21,7 +21,6 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
         mc.ncpus = cpu_count()
     else:
         mc.ncpus = options.num_cpus
-    mc.ncpus=4
     mc.sols = [Odedata()]*mc.ncpus
     mc.run()
     return mc.sol

@@ -6,11 +6,15 @@ import time
 
 def run(neq,ntraj,f90only=False):
     gamma = 1
-    psi0 = basis(neq,neq-1)
+    # sparse initial state
+    #psi0 = basis(neq,neq-1)
+    # dense initial state
+    psi0 = Qobj(ones((neq,1))).unit()
     a = destroy(neq)
     ad = a.dag()
     H = ad*a
-    c_ops = [gamma*a]
+    #c_ops = [gamma*a]
+    c_ops = [qeye(neq)]
     e_ops = [ad*a]
 
     # Times
@@ -21,6 +25,7 @@ def run(neq,ntraj,f90only=False):
 
     # set options
     opts = Odeoptions()
+    opts.num_cpus = 1
 
     start_time = time.time()
     sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)

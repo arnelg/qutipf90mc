@@ -206,15 +206,9 @@ subroutine rhs (neq, t, y, ydot, rpar, ipar)
   use qutraj_hilbert
   use qutraj_solver
   double complex y(neq), ydot(neq),rpar
-  !complex(wp) :: y(neq), ydot(neq),rpar
   double precision t
   integer ipar,neq
-  !type(state) :: dpsi
-  !ydot(1) = y(1)
-  !psi = y
   ydot = -ii*(hamilt*y)
-  !write(*,*) psi%x
-  !ydot = psi
 end subroutine
 
 subroutine dummy_jac (neq, t, y, ml, mu, pd, nrpd, rpar, ipar)

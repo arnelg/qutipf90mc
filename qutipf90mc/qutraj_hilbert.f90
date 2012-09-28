@@ -255,15 +255,7 @@ module qutraj_hilbert
     complex(wp):: operat_state_mult(size(psi))
     complex(wp), allocatable :: tmp(:)
     integer :: ierr
-    !integer, allocatable :: ost(:)
-
-    !if (size(psi).ne.size(work)) then
-    !  write(*,*) "operate_state_mult: state has wrong size:",size(psi)
-    !  write(*,*) "should be:",size(work)
-    !  write(*,*) "have you properly initialized 'work' state?"
-    !  call fatal_error
-    !  return
-    !endif
+    integer, allocatable :: ost(:)
     call new(tmp,size(psi))
     call sparse_mv_mult(oper,psi,tmp,ierr)
     if (ierr.ne.0) then
@@ -272,7 +264,7 @@ module qutraj_hilbert
     !allocate(ost(size(oper%pb)+1))
     !ost = oper%pb
     !ost(size(ost)) = oper%nnz+1
-    !call amux(oper%k,psi,work,oper%a,oper%ia1,ost)
+    !call amux(oper%k,psi,tmp,oper%a,oper%ia1,ost)
     operat_state_mult = tmp
     call finalize(tmp)
   end function
