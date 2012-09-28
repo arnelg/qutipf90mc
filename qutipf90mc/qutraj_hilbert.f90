@@ -39,7 +39,7 @@ module qutraj_hilbert
   ! work variables
   !
 
-  complex(wp), allocatable, target :: work(:)
+  !complex(wp), allocatable, target :: work(:)
 
 
   !
