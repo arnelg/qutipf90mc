@@ -4,7 +4,7 @@ from qutip import *
 import qutipf90mc as mcf90
 import time
 
-def run(neq,ntraj,f90only=False):
+def run(neq=10,ntraj=100,solver='both'):
     gamma = 1
     # sparse initial state
     #psi0 = basis(neq,neq-1)
@@ -28,11 +28,12 @@ def run(neq,ntraj,f90only=False):
     opts.num_cpus = 1
     opts.gui = False
 
-    start_time = time.time()
-    sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)
-    print "mcsolve_f90 solutiton took", time.time()-start_time, "s"
+    if (solver=='mcf90' or solver=='both'):
+        start_time = time.time()
+        sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)
+        print "mcsolve_f90 solutiton took", time.time()-start_time, "s"
 
-    if (not f90only):
+    if (solver=='mc' or solver=='both'):
         start_time = time.time()
         sol_mc = mcsolve(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)
         print "mcsolve solutiton took", time.time()-start_time, "s"
