@@ -3,13 +3,12 @@ module qutraj_solver
   use qutraj_precision
   use qutraj_general
   use qutraj_hilbert
-  use mt19937
 
   implicit none
 
   ! Defines the RHS, to be sent to zvode
-  external rhs
-  external dummy_jac
+  !external rhs
+  !external dummy_jac
 
   !
   ! Types
@@ -18,8 +17,6 @@ module qutraj_solver
   type odeoptions
     ! No. of ODES
     integer :: neq=1
-    ! Max no. of steps
-    integer :: max_step
     ! work array zwork should have length 15*neq for non-stiff
     integer :: lzw = 0
     double complex, allocatable :: zwork(:)
@@ -44,9 +41,6 @@ module qutraj_solver
   ! (Public) Data defining the problem
   !
 
-  ! Ode config options
-
-  !complex(wp), allocatable :: psi(:)
   type(operat) :: hamilt
   type(operat), allocatable :: c_ops(:), e_ops(:)
   type(odeoptions) :: ode
@@ -173,8 +167,9 @@ module qutraj_solver
   ! Evolution subs
   !
 
-  subroutine nojump(y,t,tout,itask,istate)
+  subroutine nojump(y,t,tout,itask,istate,ode)
     ! evolve with effective hamiltonian
+    type(odeoptions), intent(in) :: ode
     double complex, intent(inout) :: y(:)
     double precision, intent(inout) :: t
     double precision, intent(in) :: tout
@@ -187,36 +182,26 @@ module qutraj_solver
       ode%iwork,ode%liw,dummy_jac,ode%mf,ode%rpar,ode%ipar)
   end subroutine
 
-  !subroutine jump(j,y,tmp)
-  !  ! tmp = c_ops(j)*y
-  !  integer, intent(in) :: j
-  !  double complex, intent(in) :: y(:)
-  !  double complex, intent(out) :: tmp(:)
-  !  tmp = c_ops(j)*y
-  !end subroutine
+  !
+  ! RHS for zvode
+  !
+
+  subroutine rhs (neq, t, y, ydot, rpar, ipar)
+    ! evolve with effective hamiltonian
+    complex(wp) :: y(neq), ydot(neq),rpar
+    real(wp) :: t
+    integer :: ipar,neq
+    ydot = -ii*(hamilt*y)
+  end subroutine
+
+  subroutine dummy_jac (neq, t, y, ml, mu, pd, nrpd, rpar, ipar)
+    complex(wp) :: y(neq), pd(nrpd,neq), rpar
+    real(wp) :: t
+    integer :: neq,ml,mu,nrpd,ipar
+    return
+  end
+
 
 end module
-
-!
-! RHS for zvode
-!
-
-subroutine rhs (neq, t, y, ydot, rpar, ipar)
-  ! evolve with effective hamiltonian
-  use qutraj_hilbert
-  use qutraj_solver
-  double complex y(neq), ydot(neq),rpar
-  double precision t
-  integer ipar,neq
-  ydot = -ii*(hamilt*y)
-end subroutine
-
-subroutine dummy_jac (neq, t, y, ml, mu, pd, nrpd, rpar, ipar)
-  double complex y(neq), pd(nrpd,neq), rpar
-  double precision t
-  integer neq,ml,mu,nrpd,ipar
-  return
-end
-
 
 

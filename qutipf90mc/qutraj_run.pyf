@@ -13,6 +13,11 @@ python module qutraj_run ! in
             logical, optional :: mc_avg = .true.
             double precision, allocatable,dimension(:) :: tlist
             integer, optional :: norm_steps=5
+            integer, optional :: order=0
+            integer, optional :: nsteps=0
+            double precision, optional :: first_step=0
+            double precision, optional :: min_step=0
+            double precision, optional :: max_step=0
             complex(kind=wp), allocatable,dimension(:) :: psi0
             real(kind=wp), optional :: norm_tol=0.001
             complex(kind=wp), allocatable,dimension(:,:,:,:) :: sol
@@ -59,11 +64,10 @@ python module qutraj_run ! in
                 integer, optional,intent(in),check(len(ptr)>=nptr),depend(ptr) :: nptr=len(ptr)
                 logical, optional :: first
             end subroutine init_e_ops
-            subroutine init_odedata(neq,atol,rtol,max_step,mf,lzw,lrw,liw,ml,mu,natol,nrtol) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+            subroutine init_odedata(neq,atol,rtol,mf,lzw,lrw,liw,ml,mu,natol,nrtol) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 integer intent(in) :: neq
                 double precision dimension(natol),intent(in) :: atol
                 double precision dimension(nrtol),intent(in) :: rtol
-                integer, optional,intent(in) :: max_step = 0
                 integer, optional,intent(in) :: mf = 0
                 integer, optional,intent(in) :: lzw = 0
                 integer, optional,intent(in) :: lrw = 0

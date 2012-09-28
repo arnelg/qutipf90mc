@@ -17,6 +17,11 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
     mc.e_ops = e_ops
     mc.ntraj = ntraj
     mc.options = options
+    if (options.method == 'adams'):
+        mc.mf = 10
+    else:
+        print 'support for stiff "bdf"-method not implemented, using "adams".'
+        mc.mf = 10
     if (options.num_cpus == 0):
         mc.ncpus = cpu_count()
     else:
@@ -38,6 +43,7 @@ class _MC_class():
         self.sols = [Odedata()]
         self.sol = [Odedata()]
         self.states = True
+        self.mf = 10
 
     def parallel(self):
         from multiprocessing import Process, Queue
@@ -154,10 +160,15 @@ class _MC_class():
         qt.qutraj_run.ntraj = ntraj
         qt.qutraj_run.mc_avg = self.options.mc_avg
         qt.qutraj_run.init_odedata(self.psi0.shape[0],
-                self.options.atol,self.options.rtol,self.options.max_step,
-                mf=10)
-        #qt.qutraj_run.norm_steps=1
-        #qt.qutraj_run.norm_tol=0.01
+                self.options.atol,self.options.rtol,mf=self.mf)
+        # set optional arguments
+        qt.qutraj_run.order = self.options.order
+        qt.qutraj_run.nsteps = self.options.nsteps
+        qt.qutraj_run.first_step = self.options.first_step
+        qt.qutraj_run.min_step = self.options.min_step
+        qt.qutraj_run.max_step = self.options.max_step
+        qt.qutraj_run.norm_steps=self.options.norm_steps
+        qt.qutraj_run.norm_tol=self.options.norm_tol
 
         #run
         qt.qutraj_run.evolve(self.states,instanceno)

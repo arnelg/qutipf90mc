@@ -1,16 +1,14 @@
 !
 ! TODO:
 !
-! - optional arguments, see zvode.f
 ! - return array of density matrices when mc_avg=.true.
-! - represent states as csr matrices?
 !
 module qutraj_run
-  !f2py threadsafe
-
   use qutraj_precision
   use qutraj_general
   use qutraj_solver
+  use qutraj_hilbert
+  use mt19937
 
   implicit none
 
@@ -28,6 +26,10 @@ module qutraj_run
   integer :: n_c_ops = 0
   integer :: n_e_ops = 0
   logical :: mc_avg = .true.
+
+  ! Ode options, 0 means use default values
+  integer :: order=0,nsteps=0
+  double precision :: first_step=0,min_step=0,max_step=0
 
   ! Solution
   ! format: sol(n_e_ops,ntraj,size(tlist),y(t))
@@ -94,10 +96,10 @@ module qutraj_run
     call new(e_ops(i+1),nnz,nptr,val,col+1,ptr+1,m,k)
   end subroutine
 
-  subroutine init_odedata(neq,atol,rtol,max_step,mf,&
+  subroutine init_odedata(neq,atol,rtol,mf,&
       lzw,lrw,liw,ml,mu,natol,nrtol)
     integer, intent(in) :: neq
-    integer, intent(in), optional :: max_step,lzw,lrw,liw,mf
+    integer, intent(in), optional :: lzw,lrw,liw,mf
     integer, intent(in) :: natol,nrtol
     !real(sp), intent(in) :: atol(natol), rtol(nrtol)
     double precision, optional :: atol(1),rtol(1)
@@ -105,9 +107,6 @@ module qutraj_run
     integer :: istat
 
     ode%neq = neq
-    if (max_step.ne.0) then
-      ode%max_step = max_step
-    endif
     if (lzw.ne.0) then
       ode%lzw = lzw
     endif
@@ -224,11 +223,15 @@ module qutraj_run
 
     ! integrate one step at the time, w/o overshooting
     itask = 5
-    ! use default values for optional args
+
+    ! set optinal arguments
     ode%rwork = 0.0
     ode%iwork = 0
-    ! set max. no of steps
-    ode%iwork(6) = ode%max_step
+    ode%rwork(5) = first_step
+    ode%rwork(6) = max_step
+    ode%rwork(7) = min_step
+    ode%iwork(5) = order
+    ode%iwork(6) = nsteps
     ode%iopt = 1
 
     ! Loop over trajectories
@@ -259,7 +262,7 @@ module qutraj_run
           t_prev = t
           y_prev = y
           norm2_prev = norm2_psi
-          call nojump(y,t,tout,itask,istate)
+          call nojump(y,t,tout,itask,istate,ode)
           if (istate.lt.0) then
             write(*,*) "zvode error: istate=",istate
             !stop
@@ -281,7 +284,7 @@ module qutraj_run
               endif
               y = y_prev
               t = t_prev
-              call nojump(y,t,t_guess,1,istate)
+              call nojump(y,t,t_guess,1,istate,ode)
               if (istate.lt.0) then
                 write(*,*) "zvode failed after adjusting step size. istate=",istate
                 !stop
