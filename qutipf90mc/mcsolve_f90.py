@@ -26,7 +26,7 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
         mc.ncpus = cpu_count()
     else:
         mc.ncpus = options.num_cpus
-    mc.sols = [Odedata()]*mc.ncpus
+    #mc.sols = [Odedata()]*mc.ncpus
     mc.run()
     return mc.sol
 
@@ -40,37 +40,61 @@ class _MC_class():
         self.ntraj = 0
         self.options = Odeoptions()
         self.ncpus = 0
-        self.sols = [Odedata()]
+        #self.sols = [Odedata()]
+        #self.sols = []
         self.sol = [Odedata()]
         self.states = True
         self.mf = 10
 
     def parallel(self):
-        from multiprocessing import Process, Queue
-        processes = []
-        queue = Queue()
+        from multiprocessing import Process, Queue, JoinableQueue
         ntrajs = []
         for i in range(self.ncpus):
-            ntrajs.append(min(int(ceil(float(self.ntraj)/self.ncpus)),
+            ntrajs.append(min(int(floor(float(self.ntraj)/self.ncpus)),
                 self.ntraj-sum(ntrajs)))
+        cnt = sum(ntrajs)
+        while cnt<self.ntraj:
+            for i in range(self.ncpus):
+                ntrajs[i] += 1
+                cnt+=1
+                if (cnt>=self.ntraj):
+                    break
+        sols = []
+        processes = []
+        resq = JoinableQueue()
         print "running in parallell on ", self.ncpus, " cpus."
         print "number of trajectories for each process:"
         print ntrajs
         for i in range(self.ncpus):
             nt = ntrajs[i]
-            p = Process(target=self.solve_serial,
-                    args=((queue,ntrajs[i],i),))
+            p = Process(target=self.evolve_serial,
+                    args=((resq,ntrajs[i],i),))
             p.start()
             processes.append(p)
-        for i,proc in enumerate(processes):
+        resq.join()
+        #for i,proc in enumerate(processes):
+        #for i in range(len(processes)):
+        cnt = 0
+        while True:
+            try:
+                sols.append(resq.get())
+                resq.task_done()
+                cnt += 1
+                if (cnt >= self.ncpus): break
+            except KeyboardInterrupt:
+                break
+            except:
+                pass
+        resq.join()
+        for proc in processes:
             try:
                 proc.join()
-                self.sols[i] = queue.get()
             except KeyboardInterrupt:
                 print("Cancel thread on keyboard interrupt")
                 proc.terminate()
                 proc.join()
-        return
+        resq.close()
+        return sols
 
     def run(self):
         if (self.c_ops == []):
@@ -81,25 +105,45 @@ class _MC_class():
         else:
             self.states=False
         # run in paralell
-        self.parallel()
-        # gather data
+        sols = self.parallel()
+        # construct Odedata object
         self.sol = Odedata()
         self.sol.ntraj=self.ntraj
         self.sol.num_collapse=size(self.c_ops)
         self.sol.num_expect=size(self.e_ops)
         self.sol.solver='Fortran 90 Monte Carlo Solver'
         self.sol.times = self.tlist
+        # gather data
         if (self.states):
-            pass
-            #self.sol.states = 
-        else:
-            self.sol.expect = self.sols[0].expect
-            for i in range(size(self.e_ops)):
+            if (self.options.mc_avg):
+                # collect states, averaged over trajectories
+                self.sol.states = sols[0].states
                 for j in range(1,self.ncpus):
-                    self.sol.expect[i] += self.sols[j].expect[i]
-                self.sol.expect[i] = self.sol.expect[i]/self.ncpus
+                    self.sol.states += sols[j].states
+                self.sol.states = self.sol.states/self.ncpus
+                # convert to list to be consistent with qutip mcsolve
+                self.sol.states = list(self.sol.states)
+            else:
+                # collect states, all trajectories
+                self.sol.states = np.concatenate([sols[j].states 
+                    for j in range(self.ncpus)])
+        else:
+            if (self.options.mc_avg):
+                # collect expectation values, averaged
+                self.sol.expect = sols[0].expect
+                for i in range(size(self.e_ops)):
+                    for j in range(1,self.ncpus):
+                        self.sol.expect[i] += sols[j].expect[i]
+                    self.sol.expect[i] = self.sol.expect[i]/self.ncpus
+            else:
+                # collect expectation values, all trajectories
+                #self.sol.expect = sols[0].expect
+                self.sol.expect = np.concatenate([sols[j].expect 
+                    for j in range(self.ncpus)])
+                # convert to list to be consistent with qutip mcsolve
+                self.sol.expect = list(self.sol.expect)
 
-    def solve_serial(self,args):
+    def evolve_serial(self,args):
         # run ntraj trajectories in for one process via fortran
         import qutraj_run as qt
         # get args
@@ -135,15 +179,26 @@ class _MC_class():
                         Of[2],Of[3],Of[4],Of[5],Of[6],first)
                 first = False
         def get_states(nstep,ntraj):
-            states=array([array([Qobj()]*nstep)]*ntraj)
-            for traj in range(ntraj):
+            if (self.options.mc_avg):
+                states=np.array([Qobj()]*nstep)
                 for i in range(nstep):
-                    states[traj][i] = Qobj(matrix(qt.qutraj_run.sol[0,traj,i]).transpose())
+                    states[i] = Qobj(qt.qutraj_run.sol[0,0,i,:,:])
+            else:
+                states=np.array([np.array([Qobj()]*nstep)]*ntraj)
+                for traj in range(ntraj):
+                    for i in range(nstep):
+                        states[traj][i] = Qobj(matrix(
+                            qt.qutraj_run.sol[0,traj,i,0,:]).transpose())
             return states
         def get_expect(nstep,n_e_ops):
-            expect=[array([0.+0.j]*nstep)]*n_e_ops
-            for j in range(n_e_ops):
-                expect[j] = qt.qutraj_run.sol[j,0,:,0]
+            if (self.options.mc_avg):
+                expect=[np.array([0.+0.j]*nstep)]*n_e_ops
+                for j in range(n_e_ops):
+                    expect[j] = qt.qutraj_run.sol[j,0,:,0,0]
+            else:
+                expect=np.array([[np.array([0.+0.j]*nstep)]*n_e_ops]*ntraj)
+                for j in range(n_e_ops):
+                    expect[:,j,:] = qt.qutraj_run.sol[j,:,:,0,0]
             return expect
         def finalize():
             qt.qutraj_run.finalize_work()
@@ -187,6 +242,7 @@ class _MC_class():
             sol.expect = get_expect(size(self.tlist),size(self.e_ops))
         # put to queue
         queue.put(sol)
+        #queue.put('STOP')
         return
 
 #

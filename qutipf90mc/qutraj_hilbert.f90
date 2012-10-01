@@ -20,7 +20,7 @@ module qutraj_hilbert
     ! compression format is CSR
     character*5 :: fida = 'CSR'
     ! base: Fortran or C base
-    integer :: base = 0 ! comp with python
+    integer :: base = 1 !
     ! diag: 'U' for un-stored diag entries, assumed to be one
     character*11 :: diag = 'N'
     ! typem: 'S' for symmetric, 'H' for Hermitian
@@ -250,6 +250,17 @@ module qutraj_hilbert
     end if
   end subroutine
 
+  subroutine densitymatrix(psi,rho)
+    complex(wp), intent(in) :: psi(:)
+    complex(wp), intent(out) :: rho(:,:)
+    complex(wp), allocatable :: tmp(:,:)
+    integer istat
+    allocate(tmp(1,size(psi)),stat=istat)
+    tmp(1,:) = psi
+    rho = matmul(transpose(conjg(tmp)),tmp)
+  end subroutine
+
+
   function operat_state_mult(oper,psi)
     complex(wp), intent(in) :: psi(:)
     type(operat), intent(in) :: oper
@@ -296,85 +307,85 @@ module qutraj_hilbert
     !call get_descra(mat%DESCRA,'a',part,ierr)
     part = mat%part
     y = (0.0d0, 0.0d0) 
-    !if (diag.eq.'U') then !process unstored diagonal
-    !   if (m.eq.n) then
-    !      y = x
-    !   else
-    !      ierr = blas_error_param
-    !      return
-    !   end if
-    !end if
-    !if ((type.eq.'S').and.(.not.(part.eq.'B')).and.(m.eq.n)) then 
-    !   if (part.eq.'U') then
-    !      do i = 1, mat%M
-    !         pntr = mat%pb(i)
-    !         do while(pntr.lt.mat%pe(i))
-    !            if(i.eq.mat%IA1(pntr + ofs) + ofs) then
-    !               y(i) = y(i) &
-    !            + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
-    !            else if (i.lt.mat%IA1(pntr + ofs) + ofs) then
-    !               y(i) = y(i) &
-    !            + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
-    !               y(mat%IA1(pntr + ofs) + ofs) =  &
-    !        y(mat%IA1(pntr + ofs ) + ofs) + mat%A(pntr + ofs) * x(i) 
-    !            end if
-    !            pntr = pntr + 1
-    !         end do
-    !      end do
-    !   else
-    !      do i = 1, mat%M
-    !         pntr = mat%pb(i)
-    !         do while(pntr.lt.mat%pe(i))
-    !            if(i.eq.mat%IA1(pntr + ofs) + ofs) then
-    !               y(i) = y(i) &
-    !            + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
-    !            else if (i.gt.mat%IA1(pntr + ofs) + ofs) then
-    !               y(i) = y(i) &
-    !            + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
-    !               y(mat%IA1(pntr + ofs) + ofs) = &
-    !        y(mat%IA1(pntr + ofs ) + ofs) + mat%A(pntr + ofs) * x(i) 
-    !            end if
-    !            pntr = pntr + 1
-    !         end do
-    !      end do
-    !   end if
-    !   ierr = 0
-    !else if((type.eq.'H').and.(.not.(part.eq.'B')).and.(m.eq.n)) then 
-    !   if (part.eq.'U') then
-    !      do i = 1, mat%M
-    !         pntr = mat%pb(i)
-    !         do while(pntr.lt.mat%pe(i))
-    !            if(i.eq.mat%IA1(pntr + ofs) + ofs) then
-    !               y(i) = y(i) &
-    !            + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
-    !            else if (i.lt.mat%IA1(pntr + ofs) + ofs) then
-    !               y(i) = y(i) &
-    !            + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
-    !              y(mat%IA1(pntr+ofs)+ofs)=y(mat%IA1(pntr+ofs)+ofs) &
-    !                     + conjg (mat%A(pntr + ofs)) * x(i) 
-    !            end if
-    !            pntr = pntr + 1
-    !         end do
-    !      end do
-    !   else
-    !      do i = 1, mat%M
-    !         pntr = mat%pb(i)
-    !         do while(pntr.lt.mat%pe(i))
-    !            if(i.eq.mat%IA1(pntr + ofs) + ofs) then
-    !               y(i) = y(i) &
-    !            + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
-    !            else if (i.gt.mat%IA1(pntr + ofs) + ofs) then
-    !               y(i) = y(i) &
-    !            + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
-    !             y(mat%IA1(pntr+ofs)+ofs)=y(mat%IA1(pntr+ofs)+ofs) &
-    !                     + conjg (mat%A(pntr + ofs)) * x(i) 
-    !            end if
-    !            pntr = pntr + 1
-    !         end do
-    !      end do
-    !   end if
-    !   ierr = 0
-    !else
+    if (diag.eq.'U') then !process unstored diagonal
+       if (m.eq.n) then
+          y = x
+       else
+          ierr = blas_error_param
+          return
+       end if
+    end if
+    if ((type.eq.'S').and.(.not.(part.eq.'B')).and.(m.eq.n)) then 
+       if (part.eq.'U') then
+          do i = 1, mat%M
+             pntr = mat%pb(i)
+             do while(pntr.lt.mat%pe(i))
+                if(i.eq.mat%IA1(pntr + ofs) + ofs) then
+                   y(i) = y(i) &
+                + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
+                else if (i.lt.mat%IA1(pntr + ofs) + ofs) then
+                   y(i) = y(i) &
+                + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
+                   y(mat%IA1(pntr + ofs) + ofs) =  &
+            y(mat%IA1(pntr + ofs ) + ofs) + mat%A(pntr + ofs) * x(i) 
+                end if
+                pntr = pntr + 1
+             end do
+          end do
+       else
+          do i = 1, mat%M
+             pntr = mat%pb(i)
+             do while(pntr.lt.mat%pe(i))
+                if(i.eq.mat%IA1(pntr + ofs) + ofs) then
+                   y(i) = y(i) &
+                + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
+                else if (i.gt.mat%IA1(pntr + ofs) + ofs) then
+                   y(i) = y(i) &
+                + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
+                   y(mat%IA1(pntr + ofs) + ofs) = &
+            y(mat%IA1(pntr + ofs ) + ofs) + mat%A(pntr + ofs) * x(i) 
+                end if
+                pntr = pntr + 1
+             end do
+          end do
+       end if
+       ierr = 0
+    else if((type.eq.'H').and.(.not.(part.eq.'B')).and.(m.eq.n)) then 
+       if (part.eq.'U') then
+          do i = 1, mat%M
+             pntr = mat%pb(i)
+             do while(pntr.lt.mat%pe(i))
+                if(i.eq.mat%IA1(pntr + ofs) + ofs) then
+                   y(i) = y(i) &
+                + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
+                else if (i.lt.mat%IA1(pntr + ofs) + ofs) then
+                   y(i) = y(i) &
+                + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
+                  y(mat%IA1(pntr+ofs)+ofs)=y(mat%IA1(pntr+ofs)+ofs) &
+                         + conjg (mat%A(pntr + ofs)) * x(i) 
+                end if
+                pntr = pntr + 1
+             end do
+          end do
+       else
+          do i = 1, mat%M
+             pntr = mat%pb(i)
+             do while(pntr.lt.mat%pe(i))
+                if(i.eq.mat%IA1(pntr + ofs) + ofs) then
+                   y(i) = y(i) &
+                + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
+                else if (i.gt.mat%IA1(pntr + ofs) + ofs) then
+                   y(i) = y(i) &
+                + mat%A(pntr + ofs) * x(mat%IA1(pntr + ofs ) + ofs) 
+                 y(mat%IA1(pntr+ofs)+ofs)=y(mat%IA1(pntr+ofs)+ofs) &
+                         + conjg (mat%A(pntr + ofs)) * x(i) 
+                end if
+                pntr = pntr + 1
+             end do
+          end do
+       end if
+       ierr = 0
+    else
        do i = 1, mat%M
           pntr = mat%pb(i)
           do while(pntr.lt.mat%pe(i))
@@ -384,7 +395,7 @@ module qutraj_hilbert
           end do
        end do
        ierr = 0
-    !end if
+    end if
   end subroutine
 
 
@@ -511,9 +522,9 @@ subroutine amub ( nrow, ncol, job, a, ja, ia, b, jb, ib, c, jc, ic, nzmax, &
   integer nrow
   integer nzmax
 
-  real ( kind = wp ) a(*)
-  real ( kind = wp ) b(*)
-  real ( kind = wp ) c(nzmax)
+  complex ( kind = wp ) a(*)
+  complex ( kind = wp ) b(*)
+  complex ( kind = wp ) c(nzmax)
   integer ia(nrow+1)
   integer ib(ncol+1)
   integer ic(ncol+1)
@@ -531,7 +542,7 @@ subroutine amub ( nrow, ncol, job, a, ja, ia, b, jb, ib, c, jc, ic, nzmax, &
   integer ka
   integer kb
   integer len
-  real ( kind = wp ) scal
+  complex ( kind = wp ) scal
   logical values
 
   values = ( job /= 0 )

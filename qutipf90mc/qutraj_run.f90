@@ -32,12 +32,18 @@ module qutraj_run
   double precision :: first_step=0,min_step=0,max_step=0
 
   ! Solution
-  ! format: sol(n_e_ops,ntraj,size(tlist),y(t))
-  complex(wp), allocatable :: sol(:,:,:,:)
+  ! format:
+  ! all states: sol(1,ntraj,size(tlist),1,y(t))
+  ! avg. density mat: sol(1,1,size(tlist),rho(t))
+  ! all expect: sol(n_e_ops,ntraj,size(tlist),1,1)
+  ! avg. expect: sol(n_e_ops,1,size(tlist),1,1)
+  complex(wp), allocatable :: sol(:,:,:,:,:)
 
   contains
 
+  !
   ! Initialize problem
+  !
 
   subroutine init_tlist(val,n)
     real(sp), intent(in) :: val(n)
@@ -162,14 +168,16 @@ module qutraj_run
     ode%iopt = 0
   end subroutine
 
+  !
   ! Evolution
+  !
 
   subroutine evolve(states,instanceno)
     ! Save states or expectation values?
     logical, intent(in) :: states
     integer, intent(in) :: instanceno
     double precision :: t, tout, t_prev, t_final, t_guess
-    double complex, allocatable :: y(:),y_prev(:),ynormed(:)
+    double complex, allocatable :: y(:),y_prev(:),y_tmp(:),rho(:,:)
     integer :: istate,itask
     integer :: istat=0,i,j,k,traj,progress
     integer :: l,m,n,cnt
@@ -204,20 +212,30 @@ module qutraj_run
       endif
     endif
     if (states) then
-      allocate(sol(1,ntraj,size(tlist),ode%neq),stat=istat)
-    else if (mc_avg) then
-      allocate(sol(n_e_ops,1,size(tlist),1),stat=istat)
-    else
-      allocate(sol(n_e_ops,ntraj,size(tlist),1),stat=istat)
-    endif
-    if (istat.ne.0) then
-      call fatal_error("evolve: could not allocate.",istat)
+      if (mc_avg) then
+        allocate(sol(1,1,size(tlist),ode%neq,ode%neq),stat=istat)
+        if (istat.ne.0) call fatal_error("evolve: could not allocate.")
+        allocate(rho(ode%neq,ode%neq),stat=istat)
+        if (istat.ne.0) call fatal_error("evolve: could not allocate.")
+        rho = (0.,0.)
+      else
+        allocate(sol(1,ntraj,size(tlist),1,ode%neq),stat=istat)
+        if (istat.ne.0) call fatal_error("evolve: could not allocate.")
+      endif
+    else 
+      if (mc_avg) then
+        allocate(sol(n_e_ops,1,size(tlist),1,1),stat=istat)
+        if (istat.ne.0) call fatal_error("evolve: could not allocate.")
+      else
+        allocate(sol(n_e_ops,ntraj,size(tlist),1,1),stat=istat)
+        if (istat.ne.0) call fatal_error("evolve: could not allocate.")
+      endif
     endif
     sol = (0.,0.)
     ! Allocate solution
     call new(y,ode%neq)
     call new(y_prev,ode%neq)
-    call new(ynormed,ode%neq)
+    call new(y_tmp,ode%neq)
     ! Allocate tmp array for jump probabilities
     call new(p,n_c_ops)
 
@@ -309,7 +327,8 @@ module qutraj_run
             endif
             ! determine which jump
             do j=1,n_c_ops
-              p(j) = abs(braket(c_ops(j)*y,c_ops(j)*y))
+              y_tmp = c_ops(j)*y
+              p(j) = abs(braket(y_tmp,y_tmp))
             enddo
             p = p/sum(p)
             sump = 0
@@ -328,16 +347,26 @@ module qutraj_run
             istate = 1
           endif
         enddo
-        ynormed = y
-        call normalize(ynormed)
+        y_tmp = y
+        call normalize(y_tmp)
         if (states) then
-          sol(1,traj,i,:) = ynormed
-        else if (mc_avg) then
-          do l=1,n_e_ops
-            sol(l,1,i,1) = sol(l,1,i,1)+braket(ynormed,e_ops(l)*ynormed)
-          enddo
+          if (mc_avg) then
+            ! construct density matrix
+            call densitymatrix(y_tmp,rho)
+            sol(1,1,i,:,:) = sol(1,1,i,:,:) + rho
+          else
+            sol(1,traj,i,1,:) = y_tmp
+          endif
         else
-          exit
+          if (mc_avg) then
+            do l=1,n_e_ops
+              sol(l,1,i,1,1) = sol(l,1,i,1,1)+braket(y_tmp,e_ops(l)*y_tmp)
+            enddo
+          else
+            do l=1,n_e_ops
+              sol(l,traj,i,1,1) = braket(y_tmp,e_ops(l)*y_tmp)
+            enddo
+          endif
         endif
         ! End time loop
       enddo
@@ -349,15 +378,19 @@ module qutraj_run
       ! End loop over trajectories
     enddo
     ! normalize
-    if (.not.states .and. mc_avg) then
+    if (mc_avg) then
       sol = sol/ntraj
     endif
     ! Deallocate
     call finalize(y)
     call finalize(y_prev)
-    call finalize(ynormed)
+    call finalize(y_tmp)
     call finalize(p)
   end subroutine
+
+  !
+  ! Misc
+  !
 
   ! Deallocate stuff
 
@@ -369,6 +402,7 @@ module qutraj_run
     call finalize(e_ops)
     call finalize(ode)
   end subroutine
+
   subroutine finalize_sol
     integer :: istat=0
     call finalize(tlist)

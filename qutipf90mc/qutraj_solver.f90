@@ -191,7 +191,18 @@ module qutraj_solver
     complex(wp) :: y(neq), ydot(neq),rpar
     real(wp) :: t
     integer :: ipar,neq
+    !integer :: pntr,i
     ydot = -ii*(hamilt*y)
+    !ydot = 0.
+    !do i = 1, hamilt%M
+    !  pntr = hamilt%pb(i)
+    !  do while(pntr.lt.hamilt%pe(i))
+    !    ydot(i) = ydot(i) &
+    !        + hamilt%A(pntr) * y(hamilt%IA1(pntr))
+    !     pntr = pntr + 1
+    !  end do
+    !end do
+    !ydot = -(0.,1.)*ydot
   end subroutine
 
   subroutine dummy_jac (neq, t, y, ml, mu, pd, nrpd, rpar, ipar)
