@@ -93,7 +93,7 @@ module qutraj_general
       deallocate(this,stat=istat)
     endif
     if (istat.ne.0) then
-      call error("sp_array_finalize: could not deallocate.",istat)
+      call error("wp_array_finalize: could not deallocate.",istat)
     endif
   end subroutine
 

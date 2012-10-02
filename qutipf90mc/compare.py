@@ -44,8 +44,7 @@ def run(neq=10,ntraj=100,solver='both',ncpus=1):
         print "mcsolve solutiton took", mc_time, "s"
     return mcf90_time, mc_time
 
-def compare_system_size_scaling():
-    dims = [10,20,30,40,50,60,70,80,90,100]
+def compare_system_size_scaling(dims=[10,20,30,40,50,60,70,80,90,100]):
     #dims = [10,100,200,300,400,500,600,700,800,900,1000]
     #dims = [10,100,200,300,400,500,1000,2000,4000,6000,8000]
     ntraj = 100
@@ -84,7 +83,6 @@ def plot_system_size_scaling():
     plt.plot(dims,[t2[i]/t1[i] for i in range(size(t1))])
     plt.ylabel('(Python Comp. Time)/(Fortran Comp. Time)')
     plt.xlabel('Hilbert Space Dimension')
-
 
 if __name__ == '__main__':
     run(10,100)

@@ -1,3 +1,38 @@
 qutipf90mc
 
 The development of a "wave-function monte carlo" solver written in Fortran 90/95, with a python interface trough f2py. The program is intended to be used with the qutip python package.
+
+Features:
+
+- Usage (almost, see missing features) identical to QuTiP v.2.1.0's mcsolve
+- Uses sparse (compressed row format) matrices for operators
+- Uses zvode to integrate in time
+- Time evolution algorithm from QuTiP v2.1.0 to find correct times for jumps.
+- Automatic parallelization via Python's multiprocessing module.
+
+Missing features, to be implemented:
+- Does not accept list as "ntraj" argument.
+- Does not return col_times and col_which Odedata parameters.
+
+Missing features, not to be implemented in foreseable future:
+- Only solves prolbems without explicit time-dependence.
+
+Installation:
+
+1. Download code with
+git clone https://github.com/arnelg/qutipf90mc.git
+
+2. Enter directory and install
+cd qutipf90mc
+python setup.py install
+
+Or, if you prefer to install locally:
+python setup.py build_ext --inplace
+
+3. Test the installation by leaving the directory, starting python and entering
+import qutipf90mc
+qutipf90mc.testdemos()
+
+This will run some demos from QuTiP where the call to qutip.mcsolve has been replaced by qutipf90mc.mcsolve_f90.
+
+You can also run qutip.compare.run(dim,ntraj) to compare the speed of mcsolve_f90 vs. mcsolve for a decaying system with Hilbert space dimension dim, and ntraj trajectories, run on a single CPU.

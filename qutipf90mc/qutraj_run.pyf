@@ -28,8 +28,6 @@ python module qutraj_run ! in
             integer, allocatable,dimension(:) :: csr_ptr
             integer :: csr_nrows
             integer :: csr_ncols
-            subroutine test
-            end subroutine test
             subroutine init_tlist(val,n) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 real(kind=sp) dimension(n),intent(in) :: val
                 integer, optional,intent(in),check(len(val)>=n),depend(val) :: n=len(val)

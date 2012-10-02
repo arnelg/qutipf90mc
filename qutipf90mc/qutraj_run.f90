@@ -2,8 +2,6 @@
 ! TODO:
 !
 ! Clean up precision stuff.
-! Clean up syntax for CSR: operat%pb(nptr+1) = nnz+1
-! Density matrices returned as full arrays. Consider using CSR.
 !
 
 module qutraj_run
@@ -43,6 +41,8 @@ module qutraj_run
     double precision, allocatable :: atol(:), rtol(:)
     ! iopt=number of optional inputs, itol=1 for atol scalar, 2 otherwise
     integer :: iopt, itol
+    ! task and state of solver
+    integer :: itask, istate
   end type
 
   !
@@ -95,6 +95,12 @@ module qutraj_run
   integer, allocatable :: csr_col(:), csr_ptr(:)
   integer :: csr_nrows,csr_ncols
 
+
+  ! Integer denoting the type of unravelling
+  ! 1 for jump unravelling
+  ! diffusive unravellings to be implemented
+  integer :: unravel_type = 1
+
   !
   ! Interfaces
   !
@@ -104,29 +110,6 @@ module qutraj_run
   end interface
 
   contains
-
-  subroutine test
-    type(operat) :: c
-    integer istat
-    real :: loff(2,4), ost(4)
-    !c = operat_operat_mult(c_ops(1),c_ops(2))
-    !c = c_ops(1)
-    !write(*,*) psi0
-    !c = bra_to_operat(psi0)
-    !c = operat_operat_mult(c,c)
-    call densitymatrix_sparse(psi0,c)
-    allocate(sol_rho(2),stat=istat)
-    sol_rho(1) = c
-    c = c + c
-    sol_rho(2) = c
-    write(*,*) sol_rho(1)%a
-    write(*,*) sol_rho(1)%ia1
-    write(*,*) sol_rho(1)%pb
-    write(*,*) "------"
-    write(*,*) c%a
-    write(*,*) c%ia1
-    write(*,*) c%pb
-  endsubroutine
 
   !
   ! Initialize problem
@@ -148,7 +131,6 @@ module qutraj_run
     integer, intent(in) :: nnz,nptr,m,k
     complex(sp), intent(in)  :: val(nnz)
     integer, intent(in) :: col(nnz),ptr(nptr)
-    !call new(hamilt,nnz,nptr,val,col+1,ptr+1,m,k)
     call new(hamilt,val,col,ptr,m,k)
   end subroutine
 
@@ -195,7 +177,6 @@ module qutraj_run
     integer, intent(in) :: neq
     integer, intent(in), optional :: lzw,lrw,liw,mf
     integer, intent(in) :: natol,nrtol
-    !real(sp), intent(in) :: atol(natol), rtol(nrtol)
     double precision, optional :: atol(1),rtol(1)
     integer, intent(in), optional :: ml,mu
     integer :: istat
@@ -269,40 +250,268 @@ module qutraj_run
   ! Evolution
   !
 
+  !subroutine evolve(states,instanceno)
+  !  ! Save states or expectation values?
+  !  logical, intent(in) :: states
+  !  ! What process # am I?
+  !  integer, intent(in) :: instanceno
+  !  double precision :: t, tout, t_prev, t_final, t_guess
+  !  double complex, allocatable :: y(:),y_prev(:),y_tmp(:),rho(:,:)
+  !  type(operat) :: rho_sparse
+  !  integer :: istat=0,istat2=0,i,j,k,traj,progress
+  !  integer :: l,m,n,cnt
+  !  real(wp) :: nu,mu,norm2_psi,norm2_prev,norm2_guess,sump
+  !  real(wp), allocatable :: p(:)
+  !  ! ITASK  = An index specifying the task to be performed.
+  !  !          Input only.  ITASK has the following values and meanings.
+  !  !          1  means normal computation of output values of y(t) at
+  !  !             t = TOUT (by overshooting and interpolating).
+  !  !          2  means take one step only and return.
+  !  !          3  means stop at the first internal mesh point at or
+  !  !             beyond t = TOUT and return.
+  !  !          4  means normal computation of output values of y(t) at
+  !  !             t = TOUT but without overshooting t = TCRIT.
+  !  !             TCRIT must be input as RWORK(1).  TCRIT may be equal to
+  !  !             or beyond TOUT, but not behind it in the direction of
+  !  !             integration.  This option is useful if the problem
+  !  !             has a singularity at or beyond t = TCRIT.
+  !  !          5  means take one step, without passing TCRIT, and return.
+  !  !             TCRIT must be input as RWORK(1).
+  !  !
+  !  !          Note:  If ITASK = 4 or 5 and the solver reaches TCRIT
+  !  !          (within roundoff), it will return T = TCRIT (exactly) to
+  !  !          indicate this (unless ITASK = 4 and TOUT comes before 
+  !  !          TCRIT, in which case answers at T = TOUT are returned 
+  !  !          first).
+
+  !  ! Allocate solution array
+  !  if (allocated(sol)) then
+  !    deallocate(sol,stat=istat)
+  !    if (istat.ne.0) then
+  !      call error("evolve: could not deallocate.",istat)
+  !    endif
+  !  endif
+  !  if (states) then
+  !    if (mc_avg) then
+  !      if (return_kets) then
+  !        allocate(sol(1,1,size(tlist),ode%neq),stat=istat)
+  !        sol = (0.,0.)
+  !      else
+  !        if (rho_return_sparse) then
+  !          call new(sol_rho,size(tlist))
+  !        else
+  !          allocate(sol(1,size(tlist),ode%neq,ode%neq),stat=istat)
+  !          allocate(rho(ode%neq,ode%neq),stat=istat2)
+  !          sol = (0.,0.)
+  !          rho = (0.,0.)
+  !        endif
+  !      endif
+  !    else
+  !      allocate(sol(1,ntraj,size(tlist),ode%neq),stat=istat)
+  !      sol = (0.,0.)
+  !    endif
+  !  else 
+  !    if (mc_avg) then
+  !      allocate(sol(n_e_ops,1,size(tlist),1),stat=istat)
+  !      sol = (0.,0.)
+  !    else
+  !      allocate(sol(n_e_ops,ntraj,size(tlist),1),stat=istat)
+  !      sol = (0.,0.)
+  !    endif
+  !  endif
+  !  if (istat.ne.0) call fatal_error("evolve: could not allocate solution.",&
+  !    istat)
+  !  if (istat2.ne.0) call fatal_error("evolve: could not allocate rho.",&
+  !    istat2)
+  !  ! Allocate work arrays
+  !  call new(y,ode%neq)
+  !  call new(y_prev,ode%neq)
+  !  call new(y_tmp,ode%neq)
+  !  ! Allocate tmp array for jump probabilities
+  !  call new(p,n_c_ops)
+
+  !  ! integrate one step at the time, w/o overshooting
+  !  ode%itask = 5
+
+  !  ! set optinal arguments
+  !  ! see zvode.f
+  !  ode%rwork = 0.0
+  !  ode%iwork = 0
+  !  ode%rwork(5) = first_step
+  !  ode%rwork(6) = max_step
+  !  ode%rwork(7) = min_step
+  !  ode%iwork(5) = order
+  !  ode%iwork(6) = nsteps
+  !  ode%iopt = 1
+
+  !  ! Loop over trajectories
+  !  progress = 1
+  !  ! Initalize rng
+  !  call init_genrand(instanceno)
+  !  do traj=1,ntraj
+  !    ! two random numbers
+  !    mu = grnd()
+  !    nu = grnd()
+  !    ! first call to zvode
+  !    ode%istate = 1
+  !    ! Initial values
+  !    y = psi0
+  !    ! Initial value of indep. variable
+  !    t = tlist(1)
+  !    do i=1,size(tlist)
+  !      ! Solution wanted at
+  !      if (i==1) then
+  !        ! found this to be necessary due to round off error
+  !        tout = t
+  !      else
+  !        tout = tlist(i)
+  !      endif
+  !      ode%rwork(1) = tout
+  !      norm2_psi = abs(braket(y,y))
+  !      do while(t<tout)
+  !        t_prev = t
+  !        y_prev = y
+  !        norm2_prev = norm2_psi
+  !        call nojump(y,t,tout,ode%itask,ode)
+  !        if (ode%istate.lt.0) then
+  !          write(*,*) "zvode error: istate=",ode%istate
+  !          !stop
+  !        endif
+  !        ! prob of nojump
+  !        norm2_psi = abs(braket(y,y))
+  !        if (norm2_psi.le.mu) then
+  !          ! jump happened
+  !          ! find collapse time to specified tolerance
+  !          t_final = t
+  !          cnt=1
+  !          do k=1,norm_steps
+  !            !t_guess=t_prev+(mu-norm2_prev)&
+  !            !  /(norm2_psi-norm2_prev)*(t_final-t_prev)
+  !            t_guess=t_prev+log(norm2_prev/mu)&
+  !              /log(norm2_prev/norm2_psi)*(t_final-t_prev)
+  !            if (t_guess<t_prev .or. t_guess>t_final) then
+  !              t_guess = t_prev+0.5*(t_final-t_prev)
+  !            endif
+  !            y = y_prev
+  !            t = t_prev
+  !            call nojump(y,t,t_guess,1,ode)
+  !            if (ode%istate.lt.0) then
+  !              write(*,*) "zvode failed after adjusting step size. istate=",ode%istate
+  !              !stop
+  !            endif
+  !            norm2_guess = abs(braket(y,y))
+  !            if (abs(mu-norm2_guess) < norm_tol*mu) then
+  !                exit
+  !            elseif (norm2_guess < mu) then
+  !                ! t_guess is still > t_jump
+  !                t_final=t_guess
+  !                norm2_psi=norm2_guess
+  !            else
+  !                ! t_guess < t_jump
+  !                t_prev=t_guess
+  !                y_prev=y
+  !                norm2_prev=norm2_guess
+  !            endif
+  !            cnt = cnt+1
+  !          enddo
+  !          if (cnt > norm_steps) then
+  !            call error("Norm tolerance not reached. Increase accuracy of ODE solver or norm_steps.")
+  !          endif
+  !          ! determine which jump
+  !          do j=1,n_c_ops
+  !            y_tmp = c_ops(j)*y
+  !            p(j) = abs(braket(y_tmp,y_tmp))
+  !          enddo
+  !          p = p/sum(p)
+  !          sump = 0
+  !          do j=1,n_c_ops
+  !            if ((sump <= nu) .and. (nu < sump+p(j))) then
+  !              y = c_ops(j)*y
+  !            endif
+  !            sump = sump+p(j)
+  !          enddo
+  !          ! new random numbers
+  !          mu = grnd()
+  !          nu = grnd()
+  !          ! normalize y
+  !          call normalize(y)
+  !          ! reset, first call to zvode
+  !          ode%istate = 1
+  !        endif
+  !      enddo
+  !      y_tmp = y
+  !      call normalize(y_tmp)
+  !      ! Compute solution
+  !      if (states) then
+  !        if (mc_avg) then
+  !          if (return_kets) then
+  !            sol(1,1,i,:) = sol(1,1,i,:) + y_tmp
+  !          else
+  !            ! construct density matrix
+  !            if (rho_return_sparse) then
+  !              call densitymatrix_sparse(y_tmp,rho_sparse)
+  !              if (traj==1) then
+  !                sol_rho(i) = rho_sparse
+  !              else
+  !                !sol_rho(i) = sol_rho(i) + rho_sparse
+  !              endif
+  !            else
+  !              call densitymatrix_dense(y_tmp,rho)
+  !              sol(1,i,:,:) = sol(1,i,:,:) + rho
+  !            endif
+  !          endif
+  !        else
+  !          sol(1,traj,i,:) = y_tmp
+  !        endif
+  !      else
+  !        if (mc_avg) then
+  !          do l=1,n_e_ops
+  !            sol(l,1,i,1) = sol(l,1,i,1)+braket(y_tmp,e_ops(l)*y_tmp)
+  !          enddo
+  !        else
+  !          do l=1,n_e_ops
+  !            sol(l,traj,i,1) = braket(y_tmp,e_ops(l)*y_tmp)
+  !          enddo
+  !        endif
+  !      endif
+  !      ! End time loop
+  !    enddo
+  !    ! Indicate progress
+  !    if (instanceno == 1 .and. traj.ge.progress*ntraj/10.0) then
+  !      write(*,*) "progress of process 1: ", progress*10, "%"
+  !      progress=progress+1
+  !    endif
+  !    ! End loop over trajectories
+  !  enddo
+  !  ! normalize
+  !  if (mc_avg) then
+  !    if (states .and. .not.return_kets .and. rho_return_sparse) then
+  !      do j=1,size(sol_rho)
+  !        sol_rho(j) = (1._wp/ntraj)*sol_rho(j)
+  !      enddo
+  !    else
+  !      sol = (1._wp/ntraj)*sol
+  !    endif
+  !  endif
+  !  ! Deallocate
+  !  call finalize(y)
+  !  call finalize(y_prev)
+  !  call finalize(y_tmp)
+  !  call finalize(p)
+  !end subroutine
+
   subroutine evolve(states,instanceno)
     ! Save states or expectation values?
     logical, intent(in) :: states
     ! What process # am I?
     integer, intent(in) :: instanceno
-    double precision :: t, tout, t_prev, t_final, t_guess
-    double complex, allocatable :: y(:),y_prev(:),y_tmp(:),rho(:,:)
+    double precision :: t, tout
+    double complex, allocatable :: y(:),y_tmp(:),rho(:,:)
     type(operat) :: rho_sparse
-    integer :: istate,itask
-    integer :: istat=0,istat2=0,i,j,k,traj,progress
-    integer :: l,m,n,cnt
-    real(wp) :: nu,mu,norm2_psi,norm2_prev,norm2_guess,sump
+    integer :: istat=0,istat2=0,traj,progress
+    integer :: i,j,l,m,n
+    real(wp) :: mu,nu
     real(wp), allocatable :: p(:)
-    ! ITASK  = An index specifying the task to be performed.
-    !          Input only.  ITASK has the following values and meanings.
-    !          1  means normal computation of output values of y(t) at
-    !             t = TOUT (by overshooting and interpolating).
-    !          2  means take one step only and return.
-    !          3  means stop at the first internal mesh point at or
-    !             beyond t = TOUT and return.
-    !          4  means normal computation of output values of y(t) at
-    !             t = TOUT but without overshooting t = TCRIT.
-    !             TCRIT must be input as RWORK(1).  TCRIT may be equal to
-    !             or beyond TOUT, but not behind it in the direction of
-    !             integration.  This option is useful if the problem
-    !             has a singularity at or beyond t = TCRIT.
-    !          5  means take one step, without passing TCRIT, and return.
-    !             TCRIT must be input as RWORK(1).
-    !
-    !          Note:  If ITASK = 4 or 5 and the solver reaches TCRIT
-    !          (within roundoff), it will return T = TCRIT (exactly) to
-    !          indicate this (unless ITASK = 4 and TOUT comes before 
-    !          TCRIT, in which case answers at T = TOUT are returned 
-    !          first).
 
     ! Allocate solution array
     if (allocated(sol)) then
@@ -343,37 +552,23 @@ module qutraj_run
       istat)
     if (istat2.ne.0) call fatal_error("evolve: could not allocate rho.",&
       istat2)
+
     ! Allocate work arrays
     call new(y,ode%neq)
-    call new(y_prev,ode%neq)
     call new(y_tmp,ode%neq)
     ! Allocate tmp array for jump probabilities
     call new(p,n_c_ops)
-
-    ! integrate one step at the time, w/o overshooting
-    itask = 5
-
-    ! set optinal arguments
-    ! see zvode.f
-    ode%rwork = 0.0
-    ode%iwork = 0
-    ode%rwork(5) = first_step
-    ode%rwork(6) = max_step
-    ode%rwork(7) = min_step
-    ode%iwork(5) = order
-    ode%iwork(6) = nsteps
-    ode%iopt = 1
+    ! Initalize rng
+    call init_genrand(instanceno)
 
     ! Loop over trajectories
     progress = 1
-    ! Initalize rng
-    call init_genrand(instanceno)
     do traj=1,ntraj
       ! two random numbers
       mu = grnd()
       nu = grnd()
-      ! first call to zvode
-      istate = 1
+      ! First call to zvode
+      ode%istate = 1
       ! Initial values
       y = psi0
       ! Initial value of indep. variable
@@ -381,84 +576,17 @@ module qutraj_run
       do i=1,size(tlist)
         ! Solution wanted at
         if (i==1) then
-          ! necessary due to round off error(?)
+          ! found this to be necessary due to round off error
           tout = t
         else
           tout = tlist(i)
         endif
-        ode%rwork(1) = tout
-        norm2_psi = abs(braket(y,y))
-        do while(t<tout)
-          t_prev = t
-          y_prev = y
-          norm2_prev = norm2_psi
-          call nojump(y,t,tout,itask,istate,ode)
-          if (istate.lt.0) then
-            write(*,*) "zvode error: istate=",istate
-            !stop
-          endif
-          ! prob of nojump
-          norm2_psi = abs(braket(y,y))
-          if (norm2_psi.le.mu) then
-            ! jump happened
-            ! find collapse time to specified tolerance
-            t_final = t
-            cnt=1
-            do k=1,norm_steps
-              !t_guess=t_prev+(mu-norm2_prev)&
-              !  /(norm2_psi-norm2_prev)*(t_final-t_prev)
-              t_guess=t_prev+log(norm2_prev/mu)&
-                /log(norm2_prev/norm2_psi)*(t_final-t_prev)
-              if (t_guess<t_prev .or. t_guess>t_final) then
-                t_guess = t_prev+0.5*(t_final-t_prev)
-              endif
-              y = y_prev
-              t = t_prev
-              call nojump(y,t,t_guess,1,istate,ode)
-              if (istate.lt.0) then
-                write(*,*) "zvode failed after adjusting step size. istate=",istate
-                !stop
-              endif
-              norm2_guess = abs(braket(y,y))
-              if (abs(mu-norm2_guess) < norm_tol*mu) then
-                  exit
-              elseif (norm2_guess < mu) then
-                  ! t_guess is still > t_jump
-                  t_final=t_guess
-                  norm2_psi=norm2_guess
-              else
-                  ! t_guess < t_jump
-                  t_prev=t_guess
-                  y_prev=y
-                  norm2_prev=norm2_guess
-              endif
-              cnt = cnt+1
-            enddo
-            if (cnt > norm_steps) then
-              call error("Norm tolerance not reached. Increase accuracy of ODE solver or norm_steps.")
-            endif
-            ! determine which jump
-            do j=1,n_c_ops
-              y_tmp = c_ops(j)*y
-              p(j) = abs(braket(y_tmp,y_tmp))
-            enddo
-            p = p/sum(p)
-            sump = 0
-            do j=1,n_c_ops
-              if ((sump <= nu) .and. (nu < sump+p(j))) then
-                y = c_ops(j)*y
-              endif
-              sump = sump+p(j)
-            enddo
-            ! new random numbers
-            mu = grnd()
-            nu = grnd()
-            ! normalize y
-            call normalize(y)
-            ! reset, first call to zvode
-            istate = 1
-          endif
-        enddo
+        select case(unravel_type)
+        case(1)
+          call evolve_jump(t,tout,y,y_tmp,p,mu,nu)
+        case default
+          call fatal_error('Unknown unravel type.')
+        end select
         y_tmp = y
         call normalize(y_tmp)
         ! Compute solution
@@ -473,7 +601,7 @@ module qutraj_run
                 if (traj==1) then
                   sol_rho(i) = rho_sparse
                 else
-                  !sol_rho(i) = sol_rho(i) + rho_sparse
+                  sol_rho(i) = sol_rho(i) + rho_sparse
                 endif
               else
                 call densitymatrix_dense(y_tmp,rho)
@@ -503,7 +631,7 @@ module qutraj_run
       endif
       ! End loop over trajectories
     enddo
-    ! normalize
+    ! Normalize
     if (mc_avg) then
       if (states .and. .not.return_kets .and. rho_return_sparse) then
         do j=1,size(sol_rho)
@@ -515,7 +643,6 @@ module qutraj_run
     endif
     ! Deallocate
     call finalize(y)
-    call finalize(y_prev)
     call finalize(y_tmp)
     call finalize(p)
   end subroutine
@@ -580,7 +707,7 @@ module qutraj_run
     if (istat.ne.0) then
       call error("finalize_sol: could not deallocate.",istat)
     endif
-end subroutine
+  end subroutine
 
   ! Misc
 
@@ -609,18 +736,149 @@ end subroutine
   ! Evolution subs
   !
 
-  subroutine nojump(y,t,tout,itask,istate,ode)
+  subroutine evolve_jump(t,tout,y,y_tmp,p,mu,nu)
+    !
+    ! Evolve quantum trajectory y(t) to y(tout) using ``jump'' method
+    !
+    ! Input: t, tout, y
+    ! Work arrays: y_tmp, p
+    ! mu, nu: two random numbers
+    !
+    double complex, intent(inout) :: y(:),y_tmp(:)
+    double precision, intent(inout) :: t, tout
+    real(wp), intent(inout) :: p(:)
+    real(wp), intent(inout) :: mu,nu
+    double precision :: t_prev, t_final, t_guess
+    integer :: j,k
+    integer :: cnt
+    real(wp) :: norm2_psi,norm2_prev,norm2_guess,sump
+    logical, save :: first = .true.
+    ! ITASK  = An index specifying the task to be performed.
+    !          Input only.  ITASK has the following values and meanings.
+    !          1  means normal computation of output values of y(t) at
+    !             t = TOUT (by overshooting and interpolating).
+    !          2  means take one step only and return.
+    !          3  means stop at the first internal mesh point at or
+    !             beyond t = TOUT and return.
+    !          4  means normal computation of output values of y(t) at
+    !             t = TOUT but without overshooting t = TCRIT.
+    !             TCRIT must be input as RWORK(1).  TCRIT may be equal to
+    !             or beyond TOUT, but not behind it in the direction of
+    !             integration.  This option is useful if the problem
+    !             has a singularity at or beyond t = TCRIT.
+    !          5  means take one step, without passing TCRIT, and return.
+    !             TCRIT must be input as RWORK(1).
+    !
+    !          Note:  If ITASK = 4 or 5 and the solver reaches TCRIT
+    !          (within roundoff), it will return T = TCRIT (exactly) to
+    !          indicate this (unless ITASK = 4 and TOUT comes before 
+    !          TCRIT, in which case answers at T = TOUT are returned 
+    !          first).
+    if (first) then
+      ! integrate one step at the time, w/o overshooting
+      ode%itask = 5
+      ! set optinal arguments
+      ! see zvode.f
+      ode%rwork = 0.0
+      ode%iwork = 0
+      ode%rwork(5) = first_step
+      ode%rwork(6) = max_step
+      ode%rwork(7) = min_step
+      ode%iwork(5) = order
+      ode%iwork(6) = nsteps
+      ode%iopt = 1
+      ! first call to zvode
+      ode%istate = 1
+      first = .false.
+    endif
+
+    ode%rwork(1) = tout
+    norm2_psi = abs(braket(y,y))
+    !write(*,*) y
+    do while(t<tout)
+      t_prev = t
+      y_tmp = y
+      norm2_prev = norm2_psi
+      call nojump(y,t,tout,ode%itask,ode)
+      if (ode%istate.lt.0) then
+        write(*,*) "zvode error: istate=",ode%istate
+        !stop
+      endif
+      ! prob of nojump
+      norm2_psi = abs(braket(y,y))
+      if (norm2_psi.le.mu) then
+        ! jump happened
+        ! find collapse time to specified tolerance
+        t_final = t
+        cnt=1
+        do k=1,norm_steps
+          !t_guess=t_prev+(mu-norm2_prev)&
+          !  /(norm2_psi-norm2_prev)*(t_final-t_prev)
+          t_guess=t_prev+log(norm2_prev/mu)&
+            /log(norm2_prev/norm2_psi)*(t_final-t_prev)
+          if (t_guess<t_prev .or. t_guess>t_final) then
+            t_guess = t_prev+0.5*(t_final-t_prev)
+          endif
+          y = y_tmp
+          t = t_prev
+          call nojump(y,t,t_guess,1,ode)
+          if (ode%istate.lt.0) then
+            write(*,*) "zvode failed after adjusting step size. istate=",ode%istate
+            !stop
+          endif
+          norm2_guess = abs(braket(y,y))
+          if (abs(mu-norm2_guess) < norm_tol*mu) then
+              exit
+          elseif (norm2_guess < mu) then
+              ! t_guess is still > t_jump
+              t_final=t_guess
+              norm2_psi=norm2_guess
+          else
+              ! t_guess < t_jump
+              t_prev=t_guess
+              y_tmp=y
+              norm2_prev=norm2_guess
+          endif
+          cnt = cnt+1
+        enddo
+        if (cnt > norm_steps) then
+          call error("Norm tolerance not reached. Increase accuracy of ODE solver or norm_steps.")
+        endif
+        ! determine which jump
+        do j=1,n_c_ops
+          y_tmp = c_ops(j)*y
+          p(j) = abs(braket(y_tmp,y_tmp))
+        enddo
+        p = p/sum(p)
+        sump = 0
+        do j=1,n_c_ops
+          if ((sump <= nu) .and. (nu < sump+p(j))) then
+            y = c_ops(j)*y
+          endif
+          sump = sump+p(j)
+        enddo
+        ! new random numbers
+        mu = grnd()
+        nu = grnd()
+        ! normalize y
+        call normalize(y)
+        ! reset, first call to zvode
+        ode%istate = 1
+      endif
+    enddo
+  end subroutine
+
+  subroutine nojump(y,t,tout,itask,ode)
     ! evolve with effective hamiltonian
     type(odeoptions), intent(in) :: ode
     double complex, intent(inout) :: y(:)
     double precision, intent(inout) :: t
     double precision, intent(in) :: tout
     integer, intent(in) :: itask
-    integer, intent(inout) :: istate
     integer :: istat
 
     call zvode(rhs,ode%neq,y,t,tout,ode%itol,ode%rtol,ode%atol,&
-      itask,istate,ode%iopt,ode%zwork,ode%lzw,ode%rwork,ode%lrw,&
+      itask,ode%istate,ode%iopt,ode%zwork,ode%lzw,ode%rwork,ode%lrw,&
       ode%iwork,ode%liw,dummy_jac,ode%mf,ode%rpar,ode%ipar)
   end subroutine
 
