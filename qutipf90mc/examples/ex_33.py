@@ -33,8 +33,8 @@ def run():
 
     #run Monte-Carlo
     tlist=linspace(0,2.5,50)
-    #output=mcf90.mcsolve_f90(H,psi0,tlist,[],[],ntraj=1)
-    output=mcsolve(H,psi0,tlist,[],[],ntraj=1)
+    output=mcf90.mcsolve_f90(H,psi0,tlist,[],[],ntraj=1)
+    #output=mcsolve(H,psi0,tlist,[],[],ntraj=1)
 
     #extrace mode 1 using ptrace
     mode1=[psi.ptrace(1) for psi in output.states]

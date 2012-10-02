@@ -57,7 +57,7 @@ def compare_system_size_scaling():
         t1[i] = times[0]
         t2[i] = times[1]
     out_data = np.vstack((dims,t1,t2))
-    file_data_store('compare_system_size_scaling3.dat', out_data.T)
+    file_data_store('compare_system_size_scaling.dat', out_data.T)
     plt.figure()
     plt.plot(dims,t1,label='fortran')
     plt.plot(dims,t2,label='python')

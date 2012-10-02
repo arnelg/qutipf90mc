@@ -20,7 +20,16 @@ python module qutraj_run ! in
             double precision, optional :: max_step=0
             complex(kind=wp), allocatable,dimension(:) :: psi0
             real(kind=wp), optional :: norm_tol=0.001
-            complex(kind=wp), allocatable,dimension(:,:,:,:,:) :: sol
+            logical, optional :: return_kets = .true.
+            logical, optional :: rho_return_sparse = .true.
+            complex(kind=wp), allocatable,dimension(:,:,:,:) :: sol
+            complex(kind=wp), allocatable,dimension(:) :: csr_val
+            integer, allocatable,dimension(:) :: csr_col
+            integer, allocatable,dimension(:) :: csr_ptr
+            integer :: csr_nrows
+            integer :: csr_ncols
+            subroutine test
+            end subroutine test
             subroutine init_tlist(val,n) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 real(kind=sp) dimension(n),intent(in) :: val
                 integer, optional,intent(in),check(len(val)>=n),depend(val) :: n=len(val)
@@ -40,7 +49,7 @@ python module qutraj_run ! in
                 !integer intent(in) :: nnz
                 !integer intent(in) :: nptr
             end subroutine init_hamiltonian
-            subroutine init_c_ops(i,n,val,col,ptr,m,k,nnz,nptr,first) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+            subroutine init_c_ops(i,n,val,col,ptr,m,k,first,nnz,nptr) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 integer intent(in) :: i
                 integer intent(in) :: n
                 complex(kind=sp) dimension(nnz),intent(in) :: val
@@ -52,7 +61,7 @@ python module qutraj_run ! in
                 integer, optional,intent(in),check(len(ptr)>=nptr),depend(ptr) :: nptr=len(ptr)
                 logical, optional :: first
             end subroutine init_c_ops
-            subroutine init_e_ops(i,n,val,col,ptr,m,k,nnz,nptr,first) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+            subroutine init_e_ops(i,n,val,col,ptr,m,k,first,nnz,nptr) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 integer intent(in) :: i
                 integer intent(in) :: n
                 complex(kind=sp) dimension(nnz),intent(in) :: val
@@ -77,6 +86,9 @@ python module qutraj_run ! in
                 integer, optional,intent(in),check(len(atol)>=natol),depend(atol) :: natol=len(atol)
                 integer, optional,intent(in),check(len(rtol)>=nrtol),depend(rtol) :: nrtol=len(rtol)
             end subroutine init_odedata
+            subroutine get_rho_sparse(i)
+                integer intent(in) :: i
+            end subroutine get_rho_sparse
             subroutine evolve(states,instanceno) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 logical intent(in) :: states
                 integer intent(in) :: instanceno

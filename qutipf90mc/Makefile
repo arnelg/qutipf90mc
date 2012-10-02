@@ -9,7 +9,7 @@ F77FLAGS =
 PYFFLAGS = --overwrite-signature
 F2PYBUILDFLAGS = -DF2PY_REPORT_ON_ARRAY_COPY=1
 
-ZVODE = zvode zcopy zgbfa zgbsl zgefa zgesl
+ZVODE = zvode/zvode zvode/zcopy zvode/zgbfa zvode/zgbsl zvode/zgefa zvode/zgesl
 ZVODE_OBJS = $(ZVODE:=.o)
 ZVODE_SRCS = $(ZVODE:=.f)
 
@@ -17,14 +17,10 @@ MODS = qutraj_precision
 MODS += mt19937
 MODS += qutraj_general
 MODS += qutraj_hilbert
-MODS += qutraj_solver
+#MODS += qutraj_solver
 
 OBJS = $(MODS:=.o)
 SRCS += $(MODS:=.f90)
-
-#MODS += $(ZVODE)
-#OBJS += $(ZVODE_OBJS)
-#SRCS += $(ZVODE_SRCS)
 
 .PHONY: all clean
 
@@ -77,8 +73,8 @@ clean:
 # Dependencies
 #
 
-qutraj_run: qutraj_run.f90 qutraj_precision.o qutraj_solver.o qutraj_general.o m19937.o
-qutraj_solver: qutraj_solver.f90 qutraj_precision.o qutraj_hilbert.o qutraj_general.o zvode.o
+qutraj_run: qutraj_run.f90 qutraj_precision.o qutraj_general.o m19937.o
+#qutraj_solver: qutraj_solver.f90 qutraj_precision.o qutraj_hilbert.o qutraj_general.o zvode/zvode.o
 qutraj_hilbert: qutraj_hilbert.f90 qutraj_precision.o qutraj_general.o
 qutraj_general: qutraj_general.f90 qutraj_precision.o
 m19937: m19937.f90 qutraj_precision.o

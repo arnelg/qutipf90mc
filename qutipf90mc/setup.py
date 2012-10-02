@@ -32,7 +32,6 @@ def configuration(parent_package='',top_path=None):
                              'mt19937.f90',
                              'qutraj_general.f90',
                              'qutraj_hilbert.f90',
-                             'qutraj_solver.f90',
                              'qutraj_run.f90',
                              ],
                          libraries=libs,

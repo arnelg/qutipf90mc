@@ -1,25 +1,64 @@
 !
 ! TODO:
 !
-! - return array of density matrices when mc_avg=.true.
+! Clean up precision stuff.
+! Clean up syntax for CSR: operat%pb(nptr+1) = nnz+1
+! Density matrices returned as full arrays. Consider using CSR.
 !
+
 module qutraj_run
+  !
+  ! This is the main module on the fortran side of things
+  !
+
   use qutraj_precision
   use qutraj_general
-  use qutraj_solver
   use qutraj_hilbert
   use mt19937
 
   implicit none
 
   !
-  ! (Public) Data defining the problem
+  ! Types
   !
-  ! Some data is hidden in qutraj_solver instead.
+
+  type odeoptions
+    ! No. of ODES
+    integer :: neq=1
+    ! work array zwork should have length 15*neq for non-stiff
+    integer :: lzw = 0
+    double complex, allocatable :: zwork(:)
+    ! work array rwork should have length 20+neq for non-siff
+    integer :: lrw = 0
+    double precision, allocatable :: rwork(:)
+    ! work array iwork should have length 30 for non-stiff
+    integer :: liw = 0
+    integer, allocatable :: iwork(:)
+    ! method flag mf should be 10 for non-stiff
+    integer :: mf = 10
+    ! arbitrary real/complex and int array for user def input to rhs
+    double complex :: rpar(1)
+    integer :: ipar(1)
+    ! abs. tolerance, rel. tolerance 
+    double precision, allocatable :: atol(:), rtol(:)
+    ! iopt=number of optional inputs, itol=1 for atol scalar, 2 otherwise
+    integer :: iopt, itol
+  end type
+
   !
+  ! Data defining the problem
+  !
+  ! Invisible to python: hamilt, c_ops, e_opts, ode
+  ! (because f2py can't handle derived types)
+  !
+
+  type(operat) :: hamilt
+  type(operat), allocatable :: c_ops(:), e_ops(:)
+  type(odeoptions) :: ode
 
   real(wp), allocatable :: tlist(:)
   complex(wp), allocatable :: psi0(:)
+
   integer :: ntraj=1
   integer :: norm_steps = 5
   real(wp) :: norm_tol = 0.001
@@ -27,19 +66,67 @@ module qutraj_run
   integer :: n_e_ops = 0
   logical :: mc_avg = .true.
 
-  ! Ode options, 0 means use default values
+  ! Optional ode options, 0 means use default values
   integer :: order=0,nsteps=0
   double precision :: first_step=0,min_step=0,max_step=0
 
   ! Solution
   ! format:
-  ! all states: sol(1,ntraj,size(tlist),1,y(t))
-  ! avg. density mat: sol(1,1,size(tlist),rho(t))
-  ! all expect: sol(n_e_ops,ntraj,size(tlist),1,1)
-  ! avg. expect: sol(n_e_ops,1,size(tlist),1,1)
-  complex(wp), allocatable :: sol(:,:,:,:,:)
+  ! all states: sol(1,trajectory,time,y(:))
+  ! avg. kets: sol(1,1,time,y(:))
+  ! all expect: sol(e_ops(i),trajectory,time,expecation value)
+  ! avg. expect: sol(e_ops(i),1,time,expectation value)
+  ! if returning averaged dense density matrices:
+  ! sol(1,time,rho_i,rho_j)
+  complex(wp), allocatable :: sol(:,:,:,:)
+  ! if returning averaged density matrices in sparse CSR format,
+  ! use the following solution array and get_rho_sparse instead.
+  type(operat), allocatable :: sol_rho(:)
+
+  ! return density martices or averaged kets?
+  logical :: return_kets = .true.
+  ! return dense or sparse density matrices?
+  logical :: rho_return_sparse = .true.
+
+  ! temporary storage for csr matrix, available for python
+  ! this is needed because you can't send assumed
+  ! shape arrays to python
+  complex(wp), allocatable :: csr_val(:)
+  integer, allocatable :: csr_col(:), csr_ptr(:)
+  integer :: csr_nrows,csr_ncols
+
+  !
+  ! Interfaces
+  !
+
+  interface finalize
+    module procedure odeoptions_finalize
+  end interface
 
   contains
+
+  subroutine test
+    type(operat) :: c
+    integer istat
+    real :: loff(2,4), ost(4)
+    !c = operat_operat_mult(c_ops(1),c_ops(2))
+    !c = c_ops(1)
+    !write(*,*) psi0
+    !c = bra_to_operat(psi0)
+    !c = operat_operat_mult(c,c)
+    call densitymatrix_sparse(psi0,c)
+    allocate(sol_rho(2),stat=istat)
+    sol_rho(1) = c
+    c = c + c
+    sol_rho(2) = c
+    write(*,*) sol_rho(1)%a
+    write(*,*) sol_rho(1)%ia1
+    write(*,*) sol_rho(1)%pb
+    write(*,*) "------"
+    write(*,*) c%a
+    write(*,*) c%ia1
+    write(*,*) c%pb
+  endsubroutine
 
   !
   ! Initialize problem
@@ -61,10 +148,11 @@ module qutraj_run
     integer, intent(in) :: nnz,nptr,m,k
     complex(sp), intent(in)  :: val(nnz)
     integer, intent(in) :: col(nnz),ptr(nptr)
-    call new(hamilt,nnz,nptr,val,col+1,ptr+1,m,k)
+    !call new(hamilt,nnz,nptr,val,col+1,ptr+1,m,k)
+    call new(hamilt,val,col,ptr,m,k)
   end subroutine
 
-  subroutine init_c_ops(i,n,val,col,ptr,m,k,nnz,nptr,first)
+  subroutine init_c_ops(i,n,val,col,ptr,m,k,first,nnz,nptr)
     integer, intent(in) :: i,n
     integer, intent(in) :: nnz,nptr,m,k
     complex(sp), intent(in) :: val(nnz)
@@ -80,10 +168,10 @@ module qutraj_run
       call error('init_c_ops: c_ops not allocated. call with first=True first.')
     endif
     n_c_ops = n
-    call new(c_ops(i+1),nnz,nptr,val,col+1,ptr+1,m,k)
+    call new(c_ops(i),val,col,ptr,m,k)
   end subroutine
 
-  subroutine init_e_ops(i,n,val,col,ptr,m,k,nnz,nptr,first)
+  subroutine init_e_ops(i,n,val,col,ptr,m,k,first,nnz,nptr)
     integer, intent(in) :: i,n
     integer, intent(in) :: nnz,nptr,m,k
     complex(sp), intent(in) :: val(nnz)
@@ -99,7 +187,7 @@ module qutraj_run
       call error('init_e_ops: e_ops not allocated. call with first=True first.')
     endif
     n_e_ops = n
-    call new(e_ops(i+1),nnz,nptr,val,col+1,ptr+1,m,k)
+    call new(e_ops(i),val,col,ptr,m,k)
   end subroutine
 
   subroutine init_odedata(neq,atol,rtol,mf,&
@@ -168,6 +256,15 @@ module qutraj_run
     ode%iopt = 0
   end subroutine
 
+  subroutine get_rho_sparse(i)
+    integer, intent(in) :: i
+    call new(csr_val,sol_rho(i)%a)
+    call new(csr_col,sol_rho(i)%ia1)
+    call new(csr_ptr,sol_rho(i)%pb)
+    csr_nrows = sol_rho(i)%m
+    csr_ncols = sol_rho(i)%k
+  end subroutine
+
   !
   ! Evolution
   !
@@ -175,11 +272,13 @@ module qutraj_run
   subroutine evolve(states,instanceno)
     ! Save states or expectation values?
     logical, intent(in) :: states
+    ! What process # am I?
     integer, intent(in) :: instanceno
     double precision :: t, tout, t_prev, t_final, t_guess
     double complex, allocatable :: y(:),y_prev(:),y_tmp(:),rho(:,:)
+    type(operat) :: rho_sparse
     integer :: istate,itask
-    integer :: istat=0,i,j,k,traj,progress
+    integer :: istat=0,istat2=0,i,j,k,traj,progress
     integer :: l,m,n,cnt
     real(wp) :: nu,mu,norm2_psi,norm2_prev,norm2_guess,sump
     real(wp), allocatable :: p(:)
@@ -201,8 +300,9 @@ module qutraj_run
     !
     !          Note:  If ITASK = 4 or 5 and the solver reaches TCRIT
     !          (within roundoff), it will return T = TCRIT (exactly) to
-    !          indicate this (unless ITASK = 4 and TOUT comes before TCRIT,
-    !          in which case answers at T = TOUT are returned first).
+    !          indicate this (unless ITASK = 4 and TOUT comes before 
+    !          TCRIT, in which case answers at T = TOUT are returned 
+    !          first).
 
     ! Allocate solution array
     if (allocated(sol)) then
@@ -213,26 +313,37 @@ module qutraj_run
     endif
     if (states) then
       if (mc_avg) then
-        allocate(sol(1,1,size(tlist),ode%neq,ode%neq),stat=istat)
-        if (istat.ne.0) call fatal_error("evolve: could not allocate.")
-        allocate(rho(ode%neq,ode%neq),stat=istat)
-        if (istat.ne.0) call fatal_error("evolve: could not allocate.")
-        rho = (0.,0.)
+        if (return_kets) then
+          allocate(sol(1,1,size(tlist),ode%neq),stat=istat)
+          sol = (0.,0.)
+        else
+          if (rho_return_sparse) then
+            call new(sol_rho,size(tlist))
+          else
+            allocate(sol(1,size(tlist),ode%neq,ode%neq),stat=istat)
+            allocate(rho(ode%neq,ode%neq),stat=istat2)
+            sol = (0.,0.)
+            rho = (0.,0.)
+          endif
+        endif
       else
-        allocate(sol(1,ntraj,size(tlist),1,ode%neq),stat=istat)
-        if (istat.ne.0) call fatal_error("evolve: could not allocate.")
+        allocate(sol(1,ntraj,size(tlist),ode%neq),stat=istat)
+        sol = (0.,0.)
       endif
     else 
       if (mc_avg) then
-        allocate(sol(n_e_ops,1,size(tlist),1,1),stat=istat)
-        if (istat.ne.0) call fatal_error("evolve: could not allocate.")
+        allocate(sol(n_e_ops,1,size(tlist),1),stat=istat)
+        sol = (0.,0.)
       else
-        allocate(sol(n_e_ops,ntraj,size(tlist),1,1),stat=istat)
-        if (istat.ne.0) call fatal_error("evolve: could not allocate.")
+        allocate(sol(n_e_ops,ntraj,size(tlist),1),stat=istat)
+        sol = (0.,0.)
       endif
     endif
-    sol = (0.,0.)
-    ! Allocate solution
+    if (istat.ne.0) call fatal_error("evolve: could not allocate solution.",&
+      istat)
+    if (istat2.ne.0) call fatal_error("evolve: could not allocate rho.",&
+      istat2)
+    ! Allocate work arrays
     call new(y,ode%neq)
     call new(y_prev,ode%neq)
     call new(y_tmp,ode%neq)
@@ -243,6 +354,7 @@ module qutraj_run
     itask = 5
 
     ! set optinal arguments
+    ! see zvode.f
     ode%rwork = 0.0
     ode%iwork = 0
     ode%rwork(5) = first_step
@@ -260,7 +372,6 @@ module qutraj_run
       ! two random numbers
       mu = grnd()
       nu = grnd()
-
       ! first call to zvode
       istate = 1
       ! Initial values
@@ -270,6 +381,7 @@ module qutraj_run
       do i=1,size(tlist)
         ! Solution wanted at
         if (i==1) then
+          ! necessary due to round off error(?)
           tout = t
         else
           tout = tlist(i)
@@ -349,22 +461,36 @@ module qutraj_run
         enddo
         y_tmp = y
         call normalize(y_tmp)
+        ! Compute solution
         if (states) then
           if (mc_avg) then
-            ! construct density matrix
-            call densitymatrix(y_tmp,rho)
-            sol(1,1,i,:,:) = sol(1,1,i,:,:) + rho
+            if (return_kets) then
+              sol(1,1,i,:) = sol(1,1,i,:) + y_tmp
+            else
+              ! construct density matrix
+              if (rho_return_sparse) then
+                call densitymatrix_sparse(y_tmp,rho_sparse)
+                if (traj==1) then
+                  sol_rho(i) = rho_sparse
+                else
+                  !sol_rho(i) = sol_rho(i) + rho_sparse
+                endif
+              else
+                call densitymatrix_dense(y_tmp,rho)
+                sol(1,i,:,:) = sol(1,i,:,:) + rho
+              endif
+            endif
           else
-            sol(1,traj,i,1,:) = y_tmp
+            sol(1,traj,i,:) = y_tmp
           endif
         else
           if (mc_avg) then
             do l=1,n_e_ops
-              sol(l,1,i,1,1) = sol(l,1,i,1,1)+braket(y_tmp,e_ops(l)*y_tmp)
+              sol(l,1,i,1) = sol(l,1,i,1)+braket(y_tmp,e_ops(l)*y_tmp)
             enddo
           else
             do l=1,n_e_ops
-              sol(l,traj,i,1,1) = braket(y_tmp,e_ops(l)*y_tmp)
+              sol(l,traj,i,1) = braket(y_tmp,e_ops(l)*y_tmp)
             enddo
           endif
         endif
@@ -379,7 +505,13 @@ module qutraj_run
     enddo
     ! normalize
     if (mc_avg) then
-      sol = sol/ntraj
+      if (states .and. .not.return_kets .and. rho_return_sparse) then
+        do j=1,size(sol_rho)
+          sol_rho(j) = (1._wp/ntraj)*sol_rho(j)
+        enddo
+      else
+        sol = (1._wp/ntraj)*sol
+      endif
     endif
     ! Deallocate
     call finalize(y)
@@ -394,6 +526,41 @@ module qutraj_run
 
   ! Deallocate stuff
 
+  subroutine odeoptions_finalize(this)
+    type(odeoptions), intent(inout) :: this
+    integer :: istat
+    if (allocated(this%zwork)) then
+      deallocate(this%zwork,stat=istat)
+      if (istat.ne.0) then
+        call error("odeoptions_finalize: could not deallocate.",istat)
+      endif
+    endif
+    if (allocated(this%rwork)) then
+      deallocate(this%rwork,stat=istat)
+      if (istat.ne.0) then
+        call error("odeoptions_finalize: could not deallocate.",istat)
+      endif
+    endif
+    if (allocated(this%iwork)) then
+      deallocate(this%iwork,stat=istat)
+      if (istat.ne.0) then
+        call error("odeoptions_finalize: could not deallocate.",istat)
+      endif
+    endif
+    if (allocated(this%atol)) then
+      deallocate(this%atol,stat=istat)
+      if (istat.ne.0) then
+        call error("odeoptions_finalize: could not deallocate.",istat)
+      endif
+    endif
+    if (allocated(this%rtol)) then
+      deallocate(this%rtol,stat=istat)
+      if (istat.ne.0) then
+        call error("odeoptions_finalize: could not deallocate.",istat)
+      endif
+    endif
+  end subroutine
+
   subroutine finalize_work
     integer :: istat=0
     call finalize(psi0)
@@ -406,13 +573,14 @@ module qutraj_run
   subroutine finalize_sol
     integer :: istat=0
     call finalize(tlist)
+    call finalize(sol_rho)
     if (allocated(sol)) then
       deallocate(sol,stat=istat)
     endif
     if (istat.ne.0) then
-      call error("finalize_all: could not deallocate.",istat)
+      call error("finalize_sol: could not deallocate.",istat)
     endif
-  end subroutine
+end subroutine
 
   ! Misc
 
@@ -431,5 +599,49 @@ module qutraj_run
       i = i+1
     enddo
   end subroutine
+
+
+  !
+  ! Stuff not visible to python
+  !
+
+  !
+  ! Evolution subs
+  !
+
+  subroutine nojump(y,t,tout,itask,istate,ode)
+    ! evolve with effective hamiltonian
+    type(odeoptions), intent(in) :: ode
+    double complex, intent(inout) :: y(:)
+    double precision, intent(inout) :: t
+    double precision, intent(in) :: tout
+    integer, intent(in) :: itask
+    integer, intent(inout) :: istate
+    integer :: istat
+
+    call zvode(rhs,ode%neq,y,t,tout,ode%itol,ode%rtol,ode%atol,&
+      itask,istate,ode%iopt,ode%zwork,ode%lzw,ode%rwork,ode%lrw,&
+      ode%iwork,ode%liw,dummy_jac,ode%mf,ode%rpar,ode%ipar)
+  end subroutine
+
+  !
+  ! RHS for zvode
+  !
+
+  subroutine rhs (neq, t, y, ydot, rpar, ipar)
+    ! evolve with effective hamiltonian
+    complex(wp) :: y(neq), ydot(neq),rpar
+    real(wp) :: t
+    integer :: ipar,neq
+    ydot = -ii*(hamilt*y)
+  end subroutine
+
+  subroutine dummy_jac (neq, t, y, ml, mu, pd, nrpd, rpar, ipar)
+    ! dummy jacobian for zvode
+    complex(wp) :: y(neq), pd(nrpd,neq), rpar
+    real(wp) :: t
+    integer :: neq,ml,mu,nrpd,ipar
+    return
+  end
 
 end module

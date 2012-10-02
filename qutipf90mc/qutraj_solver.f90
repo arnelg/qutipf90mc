@@ -1,3 +1,7 @@
+!
+! Deprecated
+!
+
 module qutraj_solver
 
   use qutraj_precision
