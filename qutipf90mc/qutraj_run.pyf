@@ -87,9 +87,10 @@ python module qutraj_run ! in
             subroutine get_rho_sparse(i)
                 integer intent(in) :: i
             end subroutine get_rho_sparse
-            subroutine evolve(states,instanceno) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+            subroutine evolve(states,instanceno,rngseed) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 logical intent(in) :: states
                 integer intent(in) :: instanceno
+                integer intent(in) :: rngseed
             end subroutine evolve
             subroutine finalize_work ! in :qutraj_run:qutraj_run.f90:qutraj_run
             end subroutine finalize_work

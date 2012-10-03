@@ -1,9 +1,11 @@
 """
-This examplifies how to use MPI with qutipf90mc. It requires MPI and the python package mpi4py. You can install e.g. openmpi on ubuntu by
+This examplifies how to use MPI with qutipf90mc. It requires MPI and the 
+python package mpi4py. You can install e.g. openmpi on ubuntu by
 
     sudo apt-get install openmpi-bin openmpi-doc libopenmpi-dev
 
-Then mpi4py can be installed in the usual way you install python packages. For example with pip
+Then mpi4py can be installed in the usual way you install python packages. 
+For example with pip
 
     pip install mpi4py
 
@@ -35,7 +37,12 @@ def run():
 
     ntraj=1000
 
-    sols = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,serial=True)
+    # One CPU per MPI process
+    opts = qt.Odeoptions()
+    opts.num_cpus = 1
+
+    # Solve
+    sols = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)
     # Gather data
     sols = comm.gather(sols,root=0)
     if (rank==0):
