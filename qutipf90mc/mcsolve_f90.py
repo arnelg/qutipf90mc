@@ -68,7 +68,6 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
     else:
         mc.ncpus = options.num_cpus
     mc.nprocs = mc.ncpus
-    mc.sols = [Odedata()]*mc.ncpus
     mc.run()
     return mc.sol
 
@@ -83,8 +82,6 @@ class _MC_class():
         self.options = Odeoptions()
         self.ncpus = 0
         self.nprocs = 0
-        self.sols = [Odedata()]
-        #self.sols = []
         self.sol = [Odedata()]
         self.states = True
         self.mf = 10
