@@ -7,7 +7,8 @@ wpr = dtype(float64)
 wpc = dtype(complex64)
 
 def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
-        options=Odeoptions(),states_as_kets=True,sparse_dms=True):
+        options=Odeoptions(),
+        states_as_kets=True,sparse_dms=True,serial=False):
     """
     Monte-Carlo wave function solver with fortran 90 backend.
     Usage is identical to qutip.mcsolve, for problems without explicit
@@ -33,6 +34,8 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
         If True (default), e_ops = [] and options.mc_avg = True, results.states is a list of averaged ket vectors. If False, e_ops = [] and options.mc_avg = False, results.states is a list of averaged density matrices.
     sparse_dms : boolean
         If averaged density matrices are returned (states_as_kets=False, see above), they will be stored as sparse (Compressed Row Format) matrices during computation if sparse_dms = True (default), and dense matrices otherwise. Dense matrices might be preferable for smaller systems.
+    serial : boolean
+        If True (default is False) the solver will not make use of the multiprocessing module, and simply run in serial.
 
     Returns
     -------
@@ -68,6 +71,7 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
     else:
         mc.ncpus = options.num_cpus
     mc.nprocs = mc.ncpus
+    mc.serial_run = serial
     mc.run()
     return mc.sol
 
@@ -89,6 +93,8 @@ class _MC_class():
         self.return_kets = True
         # If returning density matrices, return as sparse or dense?
         self.rho_return_sparse = True
+        # Run in serial?
+        self.serial_run = False
 
     def parallel(self):
         from multiprocessing import Process, Queue, JoinableQueue
@@ -142,6 +148,14 @@ class _MC_class():
         resq.close()
         return sols
 
+    def serial(self):
+        from random import randint
+        self.nprocs = 1
+        print "Running in serial."
+        print "Number of trajectories:", self.ntraj
+        sol = self.evolve_serial((0,self.ntraj,randint(0,100)))
+        return [sol]
+
     def run(self):
         if (self.c_ops == []):
             # force one trajectory if no collapse operators
@@ -151,7 +165,10 @@ class _MC_class():
         else:
             self.states=False
         # run in paralell
-        sols = self.parallel()
+        if (self.serial_run):
+            sols = self.serial()
+        else:
+            sols = self.parallel()
         # construct Odedata object
         self.sol = Odedata()
         self.sol.ntraj=self.ntraj
@@ -192,7 +209,7 @@ class _MC_class():
     def evolve_serial(self,args):
         # run ntraj trajectories for one process via fortran
         # get args
-        queue,ntraj,instanceno = args 
+        queue,ntraj,instanceno = args
         # initialize the problem in fortran
         _init_tlist(self.tlist)
         _init_psi0(self.psi0)
@@ -225,12 +242,13 @@ class _MC_class():
             sol.states = self.get_states(size(self.tlist),ntraj)
         else:
             sol.expect = self.get_expect(size(self.tlist),size(self.e_ops))
-        # put to queue
-        queue.put(sol)
-        #queue.put('STOP')
+        if (not self.serial_run):
+            # put to queue
+            queue.put(sol)
+            #queue.put('STOP')
         #deallocate stuff
         #finalize()
-        return
+        return sol
 
     # Routines for retrieving data data from fortran
     def get_states(self,nstep,ntraj):
