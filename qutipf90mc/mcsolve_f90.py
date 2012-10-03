@@ -98,6 +98,7 @@ class _MC_class():
 
     def parallel(self):
         from multiprocessing import Process, Queue, JoinableQueue
+        from random import randint
         ntrajs = []
         for i in range(self.ncpus):
             ntrajs.append(min(int(floor(float(self.ntraj)/self.ncpus)),
@@ -119,10 +120,11 @@ class _MC_class():
         print "Trying to start", self.nprocs, "process(es)."
         print "Number of trajectories for each process:"
         print ntrajs
+        seedmultiplier = randint(0,100)
         for i in range(self.nprocs):
             nt = ntrajs[i]
             p = Process(target=self.evolve_serial,
-                    args=((resq,ntrajs[i],i),))
+                    args=((resq,ntrajs[i],i,seedmultiplier*(i+1)),))
             p.start()
             processes.append(p)
         resq.join()
@@ -153,7 +155,7 @@ class _MC_class():
         self.nprocs = 1
         print "Running in serial."
         print "Number of trajectories:", self.ntraj
-        sol = self.evolve_serial((0,self.ntraj,randint(0,100)))
+        sol = self.evolve_serial((0,self.ntraj,0,randint(0,100)))
         return [sol]
 
     def run(self):
@@ -209,7 +211,7 @@ class _MC_class():
     def evolve_serial(self,args):
         # run ntraj trajectories for one process via fortran
         # get args
-        queue,ntraj,instanceno = args
+        queue,ntraj,instanceno,rngseed = args
         # initialize the problem in fortran
         _init_tlist(self.tlist)
         _init_psi0(self.psi0)
@@ -235,7 +237,7 @@ class _MC_class():
         qtf90.qutraj_run.return_kets = self.return_kets
         qtf90.qutraj_run.rho_return_sparse = self.rho_return_sparse
         #run
-        qtf90.qutraj_run.evolve(self.states,instanceno)
+        qtf90.qutraj_run.evolve(self.states,instanceno,rngseed)
         # construct Odedata instance
         sol = Odedata()
         if (self.states):
