@@ -35,4 +35,4 @@ qutipf90mc.testdemos()
 
 This will run some demos from QuTiP where the call to qutip.mcsolve has been replaced by qutipf90mc.mcsolve_f90.
 
-You can also run qutip.compare.run(dim,ntraj) to compare the speed of mcsolve_f90 vs. mcsolve for a decaying system with Hilbert space dimension dim, and ntraj trajectories, run on a single CPU.
+You can also run qutipf90mc.compare.run(dim,ntraj) to compare the speed of mcsolve_f90 vs. mcsolve for a decaying system with Hilbert space dimension dim, and ntraj trajectories, run on a single CPU.
