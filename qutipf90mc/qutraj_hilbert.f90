@@ -266,7 +266,7 @@ module qutraj_hilbert
     if (ierr.ne.0) then
       call error('operat_operat_add',ierr)
     endif
-    deallocate(iw)
+    !call finalize(iw)
     nzmax = count(c%a.ne.0)
     c%pb(size(c%pb)) = nzmax+1
     call new(d,c%a(1:nzmax),c%ia1(1:nzmax),c%pb,a%m,b%k)
@@ -303,17 +303,46 @@ module qutraj_hilbert
     type(operat) :: c,d
     integer :: nzmax,ierr
     integer, allocatable :: iw(:)
-    call new(iw,a%k)
-    nzmax = a%m*b%k
+    call new(iw,b%k)
+    nzmax = a%nnz*b%nnz
     call new(c,nzmax,a%m+1)
-    call amub(a%m,b%m,1,a%a,a%ia1,a%pb,b%a,b%ia1,b%pb,&
+    call amub(a%m,b%k,1,a%a,a%ia1,a%pb,b%a,b%ia1,b%pb,&
       c%a,c%ia1,c%pb,nzmax,iw,ierr)
-    deallocate(iw)
+    if (ierr.ne.0) call error('operat_operat_mult',ierr)
+    !call finalize(iw)
     nzmax = count(c%a.ne.0)
     c%pb(size(c%pb)) = nzmax+1
     call new(d,c%a(1:nzmax),c%ia1(1:nzmax),c%pb,a%m,b%k)
     operat_operat_mult = d
   end function
+
+  subroutine operat_operat_mult_sub(a,b,d)
+    type(operat), intent(out) :: d
+    type(operat), intent(in) :: a,b
+    type(operat) :: c
+    integer :: nzmax,ierr
+    integer, allocatable :: iw(:)
+    call new(iw,b%k)
+    nzmax = a%nnz*b%nnz
+    write(*,*) 'a%m',a%m,'a%k',a%k,'a%nnz',a%nnz
+    write(*,*) 'b%m',b%m,'b%k',b%k,'b%nnz',b%nnz
+    call new(c,nzmax,a%m+1)
+    write(*,*) 'created c'
+    call amub(a%m,b%k,1,a%a,a%ia1,a%pb,b%a,b%ia1,b%pb,&
+      c%a,c%ia1,c%pb,nzmax,iw,ierr)
+    if (ierr.ne.0) call error('operat_operat_mult',ierr)
+    write(*,*) 'product'
+    write(*,*) size(c%a),size(c%pb)
+    !call finalize(iw)
+    nzmax = count(c%a.ne.0)
+    write(*,*) 'nzmax=',nzmax
+    c%pb(size(c%pb)) = nzmax+1
+    write(*,*) 'before d'
+    call new(d,c%a(1:nzmax),c%ia1(1:nzmax),c%pb,a%m,b%k)
+    !call finalize(c)
+    write(*,*) 'd%m',d%m,'d%k',d%k,'d%nnz',d%nnz,size(d%a),size(d%pb)
+    write(*,*) 'mult done'
+  end subroutine
 
   function braket(fi,psi)
     ! return <fi|psi>
@@ -342,7 +371,7 @@ module qutraj_hilbert
     complex(wp), intent(in) :: psi(:)
     type(operat) :: c,d
     integer :: nzmax,ierr
-    nzmax = count(abs(psi).ge.epsi)
+    nzmax = count(psi.ne.0)
     call new(c,nzmax,size(psi)+1)
     !state_to_operat = c
     call dnscsr(size(psi),1,nzmax,psi,size(psi),c%a,c%ia1,c%pb,ierr)
@@ -359,7 +388,7 @@ module qutraj_hilbert
     complex(wp), intent(in) :: psi(:)
     type(operat) :: c,d
     integer :: nzmax,ierr
-    nzmax = count(abs(psi).ge.epsi)
+    nzmax = count(psi.ne.0)
     call new(c,nzmax,1+1)
     !state_to_operat = c
     call dnscsr(1,size(psi),nzmax,psi,1,c%a,c%ia1,c%pb,ierr)
@@ -385,6 +414,7 @@ module qutraj_hilbert
   subroutine densitymatrix_sparse(psi,rho)
     complex(wp), intent(in) :: psi(:)
     type(operat), intent(out) :: rho
+    type(operat) :: a,b
     rho = ket_to_operat(psi)*bra_to_operat(conjg(psi))
   end subroutine
 
@@ -570,8 +600,6 @@ module qutraj_hilbert
 !  end
 !
 
- !   call aplb(a%m,a%k,1,a%a,a%ia1,a%pb,b%a,b%ia1,b%pb,c%a,c%ia1,c%pb,&
- !     nzmax,iw,ierr)
 subroutine aplb ( nrow, ncol, job, a, ja, ia, b, jb, ib, c, jc, ic, nzmax, &
   iw, ierr )
 

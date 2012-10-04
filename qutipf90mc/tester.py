@@ -83,23 +83,29 @@ def test():
 
     return sol_f90, sol_mc
 
-def testdemos():
+def rundemo(no):
     import qutipf90mc.examples as examples
-    print 'running demo #30 from qutip'
-    raw_input('press a key to continue')
-    plt.figure()
-    ex_code = compile('examples.ex_30.run()','<string>','exec')
+    print 'running demo #',str(no),'from qutip'
+    funcstr = 'examples.ex_'+str(no)+'.run()'
+    ex_code = compile(funcstr,'<string>','exec')
     eval(ex_code)
-    print 'running demo #31 from qutip'
-    raw_input('press a key to continue')
+
+def testdemos():
+    #raw_input('press a key to continue')
     plt.figure()
-    ex_code = compile('examples.ex_31.run()','<string>','exec')
-    eval(ex_code)
-    print 'running demo #33 from qutip'
-    raw_input('press a key to continue')
+    rundemo(24)
+    #raw_input('press a key to continue')
+    plt.figure()
+    rundemo(30)
+    #raw_input('press a key to continue')
+    plt.figure()
+    rundemo(31)
+    #raw_input('press a key to continue')
     #plt.figure()
-    ex_code = compile('examples.ex_33.run()','<string>','exec')
-    eval(ex_code)
+    rundemo(33)
+    #raw_input('press a key to continue')
+    #plt.figure()
+    rundemo(34)
 
 if __name__ == '__main__':
     test()

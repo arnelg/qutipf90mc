@@ -1,7 +1,7 @@
 !
 ! TODO:
 !
-!
+! Write special routine for no collapse ops
 !
 
 module qutraj_run
@@ -74,7 +74,6 @@ module qutraj_run
   ! Solution
   ! format:
   ! all states: sol(1,trajectory,time,y(:))
-  ! avg. kets: sol(1,1,time,y(:))
   ! all expect: sol(e_ops(i),trajectory,time,expecation value)
   ! avg. expect: sol(e_ops(i),1,time,expectation value)
   ! if returning averaged dense density matrices:
@@ -84,9 +83,7 @@ module qutraj_run
   ! use the following solution array and get_rho_sparse instead.
   type(operat), allocatable :: sol_rho(:)
 
-  ! return density martices or averaged kets?
-  logical :: return_kets = .true.
-  ! return dense or sparse density matrices?
+  ! use sparse density matrices during computation?
   logical :: rho_return_sparse = .true.
 
   ! temporary storage for csr matrix, available for python
@@ -258,11 +255,6 @@ module qutraj_run
     call new(csr_ptr,sol_rho(i)%pb)
     csr_nrows = sol_rho(i)%m
     csr_ncols = sol_rho(i)%k
-    !if (i==size(tlist)) then
-    !  call finalize(csr_val)
-    !  call finalize(csr_col)
-    !  call finalize(csr_ptr)
-    !endif
   end subroutine
 
   subroutine get_collapses(traj)
@@ -306,19 +298,14 @@ module qutraj_run
     endif
     if (states) then
       if (mc_avg) then
-        if (return_kets) then
-          allocate(sol(1,1,size(tlist),ode%neq),stat=istat)
-          sol = (0.,0.)
+        if (rho_return_sparse) then
+          call new(sol_rho,size(tlist))
+          call new(rho_sparse,1,1)
         else
-          if (rho_return_sparse) then
-            call new(sol_rho,size(tlist))
-            call new(rho_sparse,1,1)
-          else
-            allocate(sol(1,size(tlist),ode%neq,ode%neq),stat=istat)
-            allocate(rho(ode%neq,ode%neq),stat=istat2)
-            sol = (0.,0.)
-            rho = (0.,0.)
-          endif
+          allocate(sol(1,size(tlist),ode%neq,ode%neq),stat=istat)
+          allocate(rho(ode%neq,ode%neq),stat=istat2)
+          sol = (0.,0.)
+          rho = (0.,0.)
         endif
       else
         allocate(sol(1,ntraj,size(tlist),ode%neq),stat=istat)
@@ -395,21 +382,17 @@ module qutraj_run
         ! Compute solution
         if (states) then
           if (mc_avg) then
-            if (return_kets) then
-              sol(1,1,i,:) = sol(1,1,i,:) + y_tmp
-            else
-              ! construct density matrix
-              if (rho_return_sparse) then
-                call densitymatrix_sparse(y_tmp,rho_sparse)
-                if (traj==1) then
-                  sol_rho(i) = rho_sparse
-                else
-                  sol_rho(i) = sol_rho(i) + rho_sparse
-                endif
+            ! construct density matrix
+            if (rho_return_sparse) then
+              call densitymatrix_sparse(y_tmp,rho_sparse)
+              if (traj==1) then
+                sol_rho(i) = rho_sparse
               else
-                call densitymatrix_dense(y_tmp,rho)
-                sol(1,i,:,:) = sol(1,i,:,:) + rho
+                sol_rho(i) = sol_rho(i) + rho_sparse
               endif
+            else
+              call densitymatrix_dense(y_tmp,rho)
+              sol(1,i,:,:) = sol(1,i,:,:) + rho
             endif
           else
             sol(1,traj,i,:) = y_tmp
@@ -436,7 +419,7 @@ module qutraj_run
     enddo
     ! Normalize
     if (mc_avg) then
-      if (states .and. .not.return_kets .and. rho_return_sparse) then
+      if (states .and. rho_return_sparse) then
         do j=1,size(sol_rho)
           sol_rho(j) = (1._wp/ntraj)*sol_rho(j)
         enddo

@@ -44,8 +44,8 @@ def run():
     H=1j*(a0*a1.dag()*a2.dag()-a0.dag()*a1*a2)
 
     #run Monte-Carlo
-    #data=mcf90.mcsolve_f90(H,psi0,tlist,[C0,C1,C2],[num0,num1,num2])
-    data=mcsolve(H,psi0,tlist,[C0,C1,C2],[num0,num1,num2])
+    data=mcf90.mcsolve_f90(H,psi0,tlist,[C0,C1,C2],[num0,num1,num2])
+    #data=mcsolve(H,psi0,tlist,[C0,C1,C2],[num0,num1,num2])
 
     #plot results
     fig = figure()

@@ -18,7 +18,6 @@ python module qutraj_run ! in
             double precision, optional :: max_step=0
             complex(kind=wp), allocatable,dimension(:) :: psi0
             real(kind=wp), optional :: norm_tol=0.001
-            logical, optional :: return_kets = .true.
             logical, optional :: rho_return_sparse = .true.
             complex(kind=wp), allocatable,dimension(:,:,:,:) :: sol
             complex(kind=wp), allocatable,dimension(:) :: csr_val

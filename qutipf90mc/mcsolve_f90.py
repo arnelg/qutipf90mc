@@ -1,14 +1,14 @@
 import numpy as np
 from qutip import *
 import qutraj_run as qtf90
+import qutip.odeconfig as odeconfig
 
 # Working precision
 wpr = dtype(float64)
 wpc = dtype(complex128)
 
 def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
-        options=Odeoptions(),
-        states_as_kets=False,sparse_dms=True,serial=False):
+        options=Odeoptions(),sparse_dms=True,serial=False):
     """
     Monte-Carlo wave function solver with fortran 90 backend.
     Usage is identical to qutip.mcsolve, for problems without explicit
@@ -30,10 +30,8 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
         ``list`` or ``array`` of operators for calculating expectation values.
     options : Odeoptions
         Instance of ODE solver options.
-    states_as_ket : boolean
-        If False (default), e_ops = [] and options.mc_avg = True, results.states is a list of averaged density matrices. If False, e_ops = [] and options.mc_avg = False, results.states is a list of averaged kets. Note that this would not represent the state of the system.
     sparse_dms : boolean
-        If averaged density matrices are returned (states_as_kets=False, see above), they will be stored as sparse (Compressed Row Format) matrices during computation if sparse_dms = True (default), and dense matrices otherwise. Dense matrices might be preferable for smaller systems.
+        If averaged density matrices are returned, they will be stored as sparse (Compressed Row Format) matrices during computation if sparse_dms = True (default), and dense matrices otherwise. Dense matrices might be preferable for smaller systems.
     serial : boolean
         If True (default is False) the solver will not make use of the multiprocessing module, and simply run in serial.
 
@@ -72,7 +70,6 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
     else:
         mc.ncpus = options.num_cpus
     mc.nprocs = mc.ncpus
-    mc.states_as_kets = states_as_kets
     mc.sparse_dms = sparse_dms
     mc.serial_run = serial
     mc.run()
@@ -94,8 +91,6 @@ class _MC_class():
         self.sol = [Odedata()]
         self.states = True
         self.mf = 10
-        # If returning states, return averaged kets or density matrices?
-        self.states_as_kets = True
         # If returning density matrices, return as sparse or dense?
         self.sparse_dms = True
         # Run in serial?
@@ -175,52 +170,58 @@ class _MC_class():
             sols = self.serial()
         else:
             sols = self.parallel()
-        # construct Odedata object
-        self.sol = Odedata()
+        # gather data
+        self.sol = self.gather(sols)
+        # misc.
         self.sol.ntraj=self.ntraj
         self.sol.num_collapse=size(self.c_ops)
         self.sol.num_expect=size(self.e_ops)
         self.sol.solver='Fortran 90 Monte Carlo Solver'
         self.sol.times = self.tlist
-        # gather data
-        self.sol.col_times = np.zeros((self.ntraj),dtype=np.ndarray)
-        self.sol.col_which = np.zeros((self.ntraj),dtype=np.ndarray)
-        self.sol.col_times[0:self.ntrajs[0]] = sols[0].col_times
-        self.sol.col_which[0:self.ntrajs[0]] = sols[0].col_which
-        self.sol.states = sols[0].states
-        self.sol.expect = np.array(sols[0].expect)
+
+    def gather(self,sols):
+        # gather list of Odedata objects, sols, into one
+        sol = Odedata()
+        #sol = sols[0]
+        sol.col_times = np.zeros((self.ntraj),dtype=np.ndarray)
+        sol.col_which = np.zeros((self.ntraj),dtype=np.ndarray)
+        sol.col_times[0:self.ntrajs[0]] = sols[0].col_times
+        sol.col_which[0:self.ntrajs[0]] = sols[0].col_which
+        sol.states = sols[0].states
+        sol.expect = sols[0].expect
         sofar = 0
         for j in range(1,self.nprocs):
             sofar = sofar + self.ntrajs[j-1]
-            self.sol.col_times[sofar:sofar+self.ntrajs[j]] = (
+            sol.col_times[sofar:sofar+self.ntrajs[j]] = (
                     sols[j].col_times)
-            self.sol.col_which[sofar:sofar+self.ntrajs[j]] = (
+            sol.col_which[sofar:sofar+self.ntrajs[j]] = (
                     sols[j].col_which)
             if (self.states):
                 if (self.options.mc_avg):
                     # collect states, averaged over trajectories
-                    self.sol.states += sols[j].states
+                    sol.states += sols[j].states
                 else:
                     # collect states, all trajectories
-                    self.sol.states = np.concatenate([self.sol.states,
+                    sol.states = np.concatenate([sol.states,
                         sols[j].states])
             else:
                 if (self.options.mc_avg):
                     # collect expectation values, averaged
                     for i in range(len(self.e_ops)):
-                        self.sol.expect[i] += sols[j].expect[i]
+                        sol.expect[i] += sols[j].expect[i]
                 else:
                     # collect expectation values, all trajectories
-                    self.sol.expect = np.concatenate([self.sol.expect,
+                    sol.expect = np.concatenate([sol.expect,
                         sols[j].expect])
         if (self.options.mc_avg):
             if (self.states):
-                self.sol.states = self.sol.states/self.nprocs
+                sol.states = sol.states/self.nprocs
             else:
-                self.sol.expect = self.sol.expect/self.nprocs
+                sol.expect = sol.expect/self.nprocs
         # convert to list/array to be consistent with qutip mcsolve
-        self.sol.states = list(self.sol.states)
-        self.sol.expect = list(self.sol.expect)
+        sol.states = list(sol.states)
+        sol.expect = list(sol.expect)
+        return sol
 
     def evolve_serial(self,args):
         # run ntraj trajectories for one process via fortran
@@ -247,10 +248,9 @@ class _MC_class():
         qtf90.qutraj_run.max_step = self.options.max_step
         qtf90.qutraj_run.norm_steps=self.options.norm_steps
         qtf90.qutraj_run.norm_tol=self.options.norm_tol
-        # how to return solution
-        qtf90.qutraj_run.return_kets = self.states_as_kets
+        # use sparse density matrices during computation?
         qtf90.qutraj_run.rho_return_sparse = self.sparse_dms
-        #run
+        # run
         qtf90.qutraj_run.evolve(self.states,instanceno,rngseed)
         # construct Odedata instance
         sol = Odedata()
@@ -275,7 +275,6 @@ class _MC_class():
         col_which = np.zeros((ntraj),dtype=np.ndarray)
         for i in range(ntraj):
             qtf90.qutraj_run.get_collapses(i+1)
-            print qtf90.qutraj_run.col_times
             times = qtf90.qutraj_run.col_times
             which = qtf90.qutraj_run.col_which
             if (times==None): times = array([])
@@ -289,13 +288,7 @@ class _MC_class():
         from scipy.sparse import csr_matrix
         if (self.options.mc_avg):
             states=np.array([Qobj()]*nstep)
-            if (self.states_as_kets):
-                # averaged kets
-                for i in range(nstep):
-                    states[i] = Qobj(matrix(
-                        qtf90.qutraj_run.sol[0,0,i,:]).transpose(),
-                        dims=self.dims)
-            elif (self.sparse_dms):
+            if (self.sparse_dms):
                 # averaged sparse density matrices
                 for i in range(nstep):
                     qtf90.qutraj_run.get_rho_sparse(i+1)
@@ -323,7 +316,7 @@ class _MC_class():
         return states
     def get_expect(self,nstep,n_e_ops):
         if (self.options.mc_avg):
-            expect=[np.array([0.+0.j]*nstep)]*n_e_ops
+            expect=np.array([np.array([0.+0.j]*nstep)]*n_e_ops)
             for j in range(n_e_ops):
                 expect[j] = qtf90.qutraj_run.sol[j,0,:,0]
         else:
