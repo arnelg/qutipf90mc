@@ -25,11 +25,11 @@ def test():
     nstep = int(T/dt)
     tlist = np.linspace(0,T,nstep)
 
-    ntraj=4
+    ntraj=8
 
     # set options
     opts = qt.Odeoptions()
-    opts.num_cpus=4
+    opts.num_cpus=2
     #opts.mc_avg = True
     #opts.gui=False
     #opts.max_step=1000

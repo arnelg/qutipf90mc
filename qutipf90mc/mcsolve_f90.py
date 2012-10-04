@@ -221,7 +221,6 @@ class _MC_class():
         # convert to list/array to be consistent with qutip mcsolve
         self.sol.states = list(self.sol.states)
         self.sol.expect = list(self.sol.expect)
-        print self.sol.col_times
 
     def evolve_serial(self,args):
         # run ntraj trajectories for one process via fortran
@@ -276,14 +275,16 @@ class _MC_class():
         col_which = np.zeros((ntraj),dtype=np.ndarray)
         for i in range(ntraj):
             qtf90.qutraj_run.get_collapses(i+1)
+            print qtf90.qutraj_run.col_times
             times = qtf90.qutraj_run.col_times
             which = qtf90.qutraj_run.col_which
             if (times==None): times = array([])
             if (which==None): which = array([])
             else: which = which-1
-            col_times[i] = times
-            col_which[i] = which
+            col_times[i] = np.array(times,copy=True)
+            col_which[i] = np.array(which,copy=True)
         return col_times, col_which
+
     def get_states(self,nstep,ntraj):
         from scipy.sparse import csr_matrix
         if (self.options.mc_avg):
