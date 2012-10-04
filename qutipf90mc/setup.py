@@ -30,9 +30,13 @@ def configuration(parent_package='',top_path=None):
                              'qutraj_run.pyf',
                              'qutraj_precision.f90',
                              'mt19937.f90',
+                             'linked_list.f90',
                              'qutraj_general.f90',
                              'qutraj_hilbert.f90',
                              'qutraj_run.f90',
+                             ],
+                         extra_compile_args=[
+                             #'-DF2PY_REPORT_ON_ARRAY_COPY=1',
                              ],
                          libraries=libs,
                          **newblas)

@@ -4,44 +4,49 @@ import qutip as qt
 import qutipf90mc as mcf90
 import time
 
+
 def test():
     gamma = 1.
     neq = 2
     psi0 = qt.basis(neq,neq-1)
-    a = qt.destroy(neq)
-    ad = a.dag()
-    H = ad*a
-    c_ops = [gamma*a]
-    e_ops = [ad*a]
-    #H = qt.sigmax()
-    #c_ops = [np.sqrt(gamma)*qt.sigmax()]
+    #a = qt.destroy(neq)
+    #ad = a.dag()
+    #H = ad*a
+    #c_ops = [gamma*a]
+    #e_ops = [ad*a]
+    H = qt.sigmax()
+    c_ops = [np.sqrt(gamma)*qt.sigmax()]
     #e_ops = [qt.sigmam()*qt.sigmap(),qt.sigmap()*qt.sigmam()]
+    e_ops = []
 
     # Times
-    T = 1.0
+    T = 2.0
     dt = 0.1
     nstep = int(T/dt)
     tlist = np.linspace(0,T,nstep)
 
-    ntraj=100
+    ntraj=10000
 
     # set options
     opts = qt.Odeoptions()
-    #opts.num_cpus=1
+    opts.num_cpus=1
     #opts.mc_avg = True
     #opts.gui=False
     #opts.max_step=1000
     #opts.atol =
     #opts.rtol =
 
+    sol_f90 = qt.Odedata()
     start_time = time.time()
-    sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)
+    sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts,states_as_kets=False,sparse_dms=True)
     print "mcsolve_f90 solutiton took", time.time()-start_time, "s"
 
+    sol_me = qt.Odedata()
     start_time = time.time()
     sol_me = qt.mesolve(H,psi0,tlist,c_ops,e_ops,options=opts)
     print "mesolve solutiton took", time.time()-start_time, "s"
 
+    sol_mc = qt.Odedata()
     start_time = time.time()
     sol_mc = qt.mcsolve(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)
     print "mcsolve solutiton took", time.time()-start_time, "s"

@@ -47,10 +47,8 @@ module qutraj_hilbert
 
   interface new
     module procedure state_init
-    module procedure state_init2_sp
     module procedure state_init2_wp
     module procedure operat_init
-    module procedure operat_init2_sp
     module procedure operat_init2_wp
     module procedure operat_list_init
   end interface
@@ -98,13 +96,6 @@ module qutraj_hilbert
     endif
   end subroutine
 
-  subroutine state_init2_sp(this,val)
-    complex(wp), allocatable :: this(:)
-    complex(sp), intent(in) :: val(:)
-    call state_init(this,size(val))
-    this = val
-  end subroutine
-
   subroutine state_init2_wp(this,val)
     complex(wp), allocatable :: this(:)
     complex(wp), intent(in) :: val(:)
@@ -128,7 +119,6 @@ module qutraj_hilbert
     type(operat), intent(out) :: this
     integer, intent(in) :: nnz,nptr
     integer :: istat=0,nnz_,nptr_
-    this%nnz = nnz
     if (allocated(this%a)) then
       deallocate(this%a,stat=istat)
     endif
@@ -140,8 +130,9 @@ module qutraj_hilbert
     endif
     nnz_ = nnz
     nptr_ = nptr
-    if (nnz==0) nnz_=1
-    if (nptr==0) nptr_=1
+    if (nnz==0) nnz_= 1
+    if (nptr==0) nptr_= 1
+    this%nnz = nnz_
     allocate(this%a(nnz_),stat=istat)
     if (istat.ne.0) then
       call fatal_error("operat_init: could not allocate.",istat)
@@ -156,39 +147,16 @@ module qutraj_hilbert
     endif
     ! Set to zero
     this%a = (0.,0.)
-    this%ia1 = 1
-    this%pb = 1
-    this%m = 1
-    this%k = 1
+    !this%ia1 = 1
+    !this%pb = 1
+    !this%m = 1
+    !this%k = 1
     ! Set default parameters
     !this%fida = 'CSR'
     !this%base = 1 ! fortran base
     !this%diag = 'N'
     !this%typem = 'G'
     !this%part = 'B'
-  end subroutine
-
-  subroutine operat_init2_sp(this,val,col,ptr,m,k)
-    integer, intent(in) :: m,k
-    type(operat), intent(out) :: this
-    complex(sp), intent(in) :: val(:)
-    integer, intent(in) :: col(:),ptr(:)
-    integer :: i
-    if (size(val)==0) then
-      call operat_init(this,1,1)
-      this%m = 1
-      this%k = 1
-      this%a = (/(0.,0.)/)
-      this%ia1 = (/1/)
-      this%pb = (/1,2/)
-    else
-      call operat_init(this,size(val),size(ptr))
-      this%m = m
-      this%k = k
-      this%a = val
-      this%ia1 = col
-      this%pb = ptr
-    endif
   end subroutine
 
   subroutine operat_init2_wp(this,val,col,ptr,m,k)
@@ -268,6 +236,16 @@ module qutraj_hilbert
   ! State/operator arithmetic
   !
 
+  !subroutine tidy(a)
+  !! This isn't correct
+  !  type(operat), intent(inout) :: a
+  !  type(operat) :: b
+  !  nzmax = count(abs(a%a).ge.epsi)
+  !  a%pb(size(a%pb)) = nzmax+1
+  !  call new(b,a%a(1:nzmax),a%ia1(1:nzmax),a%pb,a%m,a%k)
+  !  a = b
+  !end subroutine
+
   subroutine operat_operat_eq(this,a)
     type(operat), intent(out) :: this
     type(operat), intent(in) :: a
@@ -280,13 +258,17 @@ module qutraj_hilbert
     type(operat) :: c,d
     integer :: nzmax,ierr
     integer, allocatable :: iw(:)
-    call new(iw,size(a%ia1))
+    call new(iw,a%k)
     nzmax = size(a%a) + size(b%a)
     call new(c,nzmax,a%m+1)
     call aplb(a%m,a%k,1,a%a,a%ia1,a%pb,b%a,b%ia1,b%pb,c%a,c%ia1,c%pb,&
       nzmax,iw,ierr)
+    if (ierr.ne.0) then
+      call error('operat_operat_add',ierr)
+    endif
     deallocate(iw)
-    nzmax = count(abs(c%a).ge.epsi)
+    nzmax = count(c%a.ne.0)
+    c%pb(size(c%pb)) = nzmax+1
     call new(d,c%a(1:nzmax),c%ia1(1:nzmax),c%pb,a%m,b%k)
     operat_operat_add = d
   end function
@@ -321,13 +303,14 @@ module qutraj_hilbert
     type(operat) :: c,d
     integer :: nzmax,ierr
     integer, allocatable :: iw(:)
-    call new(iw,size(a%ia1))
+    call new(iw,a%k)
     nzmax = a%m*b%k
     call new(c,nzmax,a%m+1)
     call amub(a%m,b%m,1,a%a,a%ia1,a%pb,b%a,b%ia1,b%pb,&
       c%a,c%ia1,c%pb,nzmax,iw,ierr)
     deallocate(iw)
-    nzmax = count(abs(c%a).ge.epsi)
+    nzmax = count(c%a.ne.0)
+    c%pb(size(c%pb)) = nzmax+1
     call new(d,c%a(1:nzmax),c%ia1(1:nzmax),c%pb,a%m,b%k)
     operat_operat_mult = d
   end function
@@ -587,6 +570,8 @@ module qutraj_hilbert
 !  end
 !
 
+ !   call aplb(a%m,a%k,1,a%a,a%ia1,a%pb,b%a,b%ia1,b%pb,c%a,c%ia1,c%pb,&
+ !     nzmax,iw,ierr)
 subroutine aplb ( nrow, ncol, job, a, ja, ia, b, jb, ib, c, jc, ic, nzmax, &
   iw, ierr )
 

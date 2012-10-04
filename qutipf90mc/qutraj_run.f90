@@ -1,7 +1,7 @@
 !
 ! TODO:
 !
-! Clean up precision stuff.
+!
 !
 
 module qutraj_run
@@ -13,6 +13,7 @@ module qutraj_run
   use qutraj_general
   use qutraj_hilbert
   use mt19937
+  use linked_list
 
   implicit none
 
@@ -95,6 +96,14 @@ module qutraj_run
   integer, allocatable :: csr_col(:), csr_ptr(:)
   integer :: csr_nrows,csr_ncols
 
+  ! Collapse times and integer denoting which operator did it
+  real(wp), allocatable :: col_times(:)
+  integer, allocatable :: col_which(:)
+  ! data temporarily stored in linked lists...
+  type(linkedlist_real) :: ll_col_times
+  type(linkedlist_int) :: ll_col_which
+  type(llnode_real), pointer :: realnode
+  type(llnode_int), pointer :: intnode
 
   ! Integer denoting the type of unravelling
   ! 1 for jump unravelling
@@ -116,28 +125,32 @@ module qutraj_run
   !
 
   subroutine init_tlist(val,n)
-    real(sp), intent(in) :: val(n)
+    use qutraj_precision
+    real(wp), intent(in) :: val(n)
     integer, intent(in) :: n
     call new(tlist,val)
   end subroutine
 
   subroutine init_psi0(val,n)
-    complex(sp), intent(in) :: val(n)
+    use qutraj_precision
+    complex(wp), intent(in) :: val(n)
     integer, intent(in) :: n
     call new(psi0,val)
   end subroutine
 
   subroutine init_hamiltonian(val,col,ptr,m,k,nnz,nptr)
+    use qutraj_precision
     integer, intent(in) :: nnz,nptr,m,k
-    complex(sp), intent(in)  :: val(nnz)
+    complex(wp), intent(in)  :: val(nnz)
     integer, intent(in) :: col(nnz),ptr(nptr)
     call new(hamilt,val,col,ptr,m,k)
   end subroutine
 
   subroutine init_c_ops(i,n,val,col,ptr,m,k,first,nnz,nptr)
+    use qutraj_precision
     integer, intent(in) :: i,n
     integer, intent(in) :: nnz,nptr,m,k
-    complex(sp), intent(in) :: val(nnz)
+    complex(wp), intent(in) :: val(nnz)
     integer, intent(in) :: col(nnz),ptr(nptr)
     logical, optional :: first
     if (.not.present(first)) then
@@ -154,9 +167,10 @@ module qutraj_run
   end subroutine
 
   subroutine init_e_ops(i,n,val,col,ptr,m,k,first,nnz,nptr)
+    use qutraj_precision
     integer, intent(in) :: i,n
     integer, intent(in) :: nnz,nptr,m,k
-    complex(sp), intent(in) :: val(nnz)
+    complex(wp), intent(in) :: val(nnz)
     integer, intent(in) :: col(nnz),ptr(nptr)
     logical, optional :: first
     if (.not.present(first)) then
@@ -174,6 +188,7 @@ module qutraj_run
 
   subroutine init_odedata(neq,atol,rtol,mf,&
       lzw,lrw,liw,ml,mu,natol,nrtol)
+    use qutraj_precision
     integer, intent(in) :: neq
     integer, intent(in), optional :: lzw,lrw,liw,mf
     integer, intent(in) :: natol,nrtol
@@ -278,6 +293,7 @@ module qutraj_run
         else
           if (rho_return_sparse) then
             call new(sol_rho,size(tlist))
+            call new(rho_sparse,1,1)
           else
             allocate(sol(1,size(tlist),ode%neq,ode%neq),stat=istat)
             allocate(rho(ode%neq,ode%neq),stat=istat2)
@@ -391,6 +407,9 @@ module qutraj_run
         sol = (1._wp/ntraj)*sol
       endif
     endif
+    ! Turn linked lists into arrays
+    call ll_to_array(ll_col_times,col_times)
+    call ll_to_array(ll_col_which,col_which)
     ! Deallocate
     call finalize(y)
     call finalize(y_tmp)
@@ -462,6 +481,7 @@ module qutraj_run
   ! Misc
 
   subroutine test_real_precision
+    use qutraj_precision
     real(wp) :: b,a
     integer :: i
     write(*,*) "wp=",wp
@@ -604,6 +624,11 @@ module qutraj_run
         do j=1,n_c_ops
           if ((sump <= nu) .and. (nu < sump+p(j))) then
             y = c_ops(j)*y
+            ! Append collapse time and operator # to linked lists
+            call new(realnode,t)
+            call new(intnode,j)
+            call append(ll_col_times,realnode)
+            call append(ll_col_which,intnode)
           endif
           sump = sump+p(j)
         enddo

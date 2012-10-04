@@ -17,17 +17,24 @@ MODS = qutraj_precision
 MODS += mt19937
 MODS += qutraj_general
 MODS += qutraj_hilbert
-#MODS += qutraj_solver
+MODS += linked_list
 
 OBJS = $(MODS:=.o)
 SRCS += $(MODS:=.f90)
 
 .PHONY: all clean
 
-all:
-	@echo Usage:
-	@echo make pyf - makes .pyf file, do this first.
-	@echo make f2pybuild - compiles the module and all dependencies.
+#all:
+#	@echo Usage:
+#	@echo make pyf - makes .pyf file, do this first.
+#	@echo make f2pybuild - compiles the module and all dependencies.
+
+all: $(OBJS)
+	f2py $(F2PYBUILDFLAGS) -c $(TARGET:=.pyf) $(TARGET:=.f90) $(SRCS) $(ZVODE_OBJS) $(LDFLAGS)
+	@echo
+	@echo Remember to manually edit .pyf file to remove private subroutines and give default values to optional parameters. BEFORE building.
+
+#$(OBJS): $(ZVODE_OBJS)
 
 pyf:
 ifneq "$(wildcard qutraj_run.pyf )" ""
@@ -35,20 +42,12 @@ ifneq "$(wildcard qutraj_run.pyf )" ""
 endif
 	f2py -m $(TARGET) -h $(TARGET:=.pyf) $(PYFFLAGS) $(TARGET:=.f90)
 	@echo
-	@echo Remember to manually edit .pyf file to remove private subroutines, give default values to optional parameters, and set precision.
+	@echo Remember to manually edit .pyf file to remove private subroutines, give default values to optional parameters.
 
 #
 # need to manually edit .pyf file to remove private subroutines,
 # and give default values for optional arguments
 #
-
-f2pybuild: $(OBJS)
-	f2py $(F2PYBUILDFLAGS) -c $(TARGET:=.pyf) $(TARGET:=.f90) $(SRCS) $(ZVODE_OBJS) $(LDFLAGS)
-	@echo
-	@echo Remember to manually edit .pyf file to remove private subroutines, give default values to optional parameters, and set precision. BEFORE building.
-
-
-$(OBJS): $(ZVODE_OBJS)
 
 clean:
 	$(RM) *.o
@@ -73,10 +72,10 @@ clean:
 # Dependencies
 #
 
-qutraj_run: qutraj_run.f90 qutraj_precision.o qutraj_general.o m19937.o
-#qutraj_solver: qutraj_solver.f90 qutraj_precision.o qutraj_hilbert.o qutraj_general.o zvode/zvode.o
+qutraj_run: qutraj_run.f90 qutraj_precision.o qutraj_general.o linked_list.o mt19937.o zvode/zvode.o
 qutraj_hilbert: qutraj_hilbert.f90 qutraj_precision.o qutraj_general.o
 qutraj_general: qutraj_general.f90 qutraj_precision.o
-m19937: m19937.f90 qutraj_precision.o
+linked_list: linked_list.f90 qutraj_precision.o
+mt19937: mt19937.f90 qutraj_precision.o
 qutraj_precision: qutraj_precision.f90
 

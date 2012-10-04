@@ -24,6 +24,7 @@ def setup_package():
     try:
         setup(
             name = 'qutipf90mc',
+            version = '0.1',
             maintainer = "Arne L. Grimsmo",
             maintainer_email = "arne.grimsmo@gmail.com",
             description = DOCLINES[0],

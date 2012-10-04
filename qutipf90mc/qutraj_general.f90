@@ -25,8 +25,7 @@ module qutraj_general
     module procedure int_array_init
     module procedure int_array_init2
     module procedure wp_array_init
-    module procedure sp_array_init2
-    module procedure dp_array_init2
+    module procedure wp_array_init2
   end interface
 
   interface finalize
@@ -72,16 +71,9 @@ module qutraj_general
     endif
   end subroutine
 
-  subroutine sp_array_init2(this,val)
+  subroutine wp_array_init2(this,val)
     real(wp), allocatable, intent(inout) :: this(:)
-    real(sp), intent(in), dimension(:) :: val
-    call wp_array_init(this,size(val))
-    this = val
-  end subroutine
-
-  subroutine dp_array_init2(this,val)
-    real(wp), allocatable, intent(inout) :: this(:)
-    real(dp), intent(in), dimension(:) :: val
+    real(wp), intent(in), dimension(:) :: val
     call wp_array_init(this,size(val))
     this = val
   end subroutine
