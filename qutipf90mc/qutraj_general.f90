@@ -29,6 +29,7 @@ module qutraj_general
   end interface
 
   interface finalize
+    module procedure int_array_finalize
     module procedure wp_array_finalize
   end interface
 
@@ -76,6 +77,17 @@ module qutraj_general
     real(wp), intent(in), dimension(:) :: val
     call wp_array_init(this,size(val))
     this = val
+  end subroutine
+
+  subroutine int_array_finalize(this)
+    integer, allocatable, intent(inout) :: this(:)
+    integer :: istat=0
+    if (allocated(this)) then
+      deallocate(this,stat=istat)
+    endif
+    if (istat.ne.0) then
+      call error("int_array_finalize: could not deallocate.",istat)
+    endif
   end subroutine
 
   subroutine wp_array_finalize(this)

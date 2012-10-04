@@ -87,6 +87,7 @@ class _MC_class():
         self.c_ops = [Qobj()]
         self.e_ops = [Qobj()]
         self.ntraj = 0
+        self.ntrajs = []
         self.options = Odeoptions()
         self.ncpus = 0
         self.nprocs = 0
@@ -103,32 +104,31 @@ class _MC_class():
     def parallel(self):
         from multiprocessing import Process, Queue, JoinableQueue
         from random import randint
-        ntrajs = []
+        self.ntrajs = []
         for i in range(self.ncpus):
-            ntrajs.append(min(int(floor(float(self.ntraj)/self.ncpus)),
-                self.ntraj-sum(ntrajs)))
-        cnt = sum(ntrajs)
+            self.ntrajs.append(min(int(floor(float(self.ntraj)/self.ncpus)),
+                self.ntraj-sum(self.ntrajs)))
+        cnt = sum(self.ntrajs)
         while cnt<self.ntraj:
             for i in range(self.ncpus):
-                ntrajs[i] += 1
+                self.ntrajs[i] += 1
                 cnt+=1
                 if (cnt>=self.ntraj):
                     break
-        ntrajs = np.array(ntrajs)
-        ntrajs = ntrajs[np.where(ntrajs>0)]
-        self.nprocs = len(ntrajs)
+        self.ntrajs = np.array(self.ntrajs)
+        self.ntrajs = self.ntrajs[np.where(self.ntrajs>0)]
+        self.nprocs = len(self.ntrajs)
         sols = []
         processes = []
         resq = JoinableQueue()
         print "Number of cpus:", self.ncpus
         print "Trying to start", self.nprocs, "process(es)."
         print "Number of trajectories for each process:"
-        print ntrajs
+        print self.ntrajs
         seedmultiplier = randint(0,100)
         for i in range(self.nprocs):
-            nt = ntrajs[i]
             p = Process(target=self.evolve_serial,
-                    args=((resq,ntrajs[i],i,seedmultiplier*(i+1)),))
+                    args=((resq,self.ntrajs[i],i,seedmultiplier*(i+1)),))
             p.start()
             processes.append(p)
         resq.join()
@@ -183,11 +183,19 @@ class _MC_class():
         self.sol.solver='Fortran 90 Monte Carlo Solver'
         self.sol.times = self.tlist
         # gather data
-        self.sol.col_times = sols[0].col_times
-        self.sol.col_which = sols[0].col_which
+        self.sol.col_times = np.zeros((self.ntraj),dtype=np.ndarray)
+        self.sol.col_which = np.zeros((self.ntraj),dtype=np.ndarray)
+        self.sol.col_times[0:self.ntrajs[0]] = sols[0].col_times
+        self.sol.col_which[0:self.ntrajs[0]] = sols[0].col_which
         self.sol.states = sols[0].states
         self.sol.expect = np.array(sols[0].expect)
+        sofar = 0
         for j in range(1,self.nprocs):
+            sofar = sofar + self.ntrajs[j-1]
+            self.sol.col_times[sofar:sofar+self.ntrajs[j]] = (
+                    sols[j].col_times)
+            self.sol.col_which[sofar:sofar+self.ntrajs[j]] = (
+                    sols[j].col_which)
             if (self.states):
                 if (self.options.mc_avg):
                     # collect states, averaged over trajectories
@@ -205,14 +213,15 @@ class _MC_class():
                     # collect expectation values, all trajectories
                     self.sol.expect = np.concatenate([self.sol.expect,
                         sols[j].expect])
-        # convert to list to be consistent with qutip mcsolve
         if (self.options.mc_avg):
             if (self.states):
                 self.sol.states = self.sol.states/self.nprocs
             else:
                 self.sol.expect = self.sol.expect/self.nprocs
+        # convert to list/array to be consistent with qutip mcsolve
         self.sol.states = list(self.sol.states)
         self.sol.expect = list(self.sol.expect)
+        print self.sol.col_times
 
     def evolve_serial(self,args):
         # run ntraj trajectories for one process via fortran
@@ -246,8 +255,9 @@ class _MC_class():
         qtf90.qutraj_run.evolve(self.states,instanceno,rngseed)
         # construct Odedata instance
         sol = Odedata()
-        sol.col_times = qtf90.qutraj_run.col_times
-        sol.col_which = qtf90.qutraj_run.col_which-1
+        #sol.col_times = qtf90.qutraj_run.col_times
+        #sol.col_which = qtf90.qutraj_run.col_which-1
+        sol.col_times, sol.col_which = self.get_collapses(ntraj)
         if (self.states):
             sol.states = self.get_states(size(self.tlist),ntraj)
         else:
@@ -261,6 +271,19 @@ class _MC_class():
         return sol
 
     # Routines for retrieving data data from fortran
+    def get_collapses(self,ntraj):
+        col_times = np.zeros((ntraj),dtype=np.ndarray)
+        col_which = np.zeros((ntraj),dtype=np.ndarray)
+        for i in range(ntraj):
+            qtf90.qutraj_run.get_collapses(i+1)
+            times = qtf90.qutraj_run.col_times
+            which = qtf90.qutraj_run.col_which
+            if (times==None): times = array([])
+            if (which==None): which = array([])
+            else: which = which-1
+            col_times[i] = times
+            col_which[i] = which
+        return col_times, col_which
     def get_states(self,nstep,ntraj):
         from scipy.sparse import csr_matrix
         if (self.options.mc_avg):

@@ -97,13 +97,12 @@ module qutraj_run
   integer :: csr_nrows,csr_ncols
 
   ! Collapse times and integer denoting which operator did it
+  ! temporary storage available for python
   real(wp), allocatable :: col_times(:)
   integer, allocatable :: col_which(:)
-  ! data temporarily stored in linked lists...
-  type(linkedlist_real) :: ll_col_times
-  type(linkedlist_int) :: ll_col_which
-  type(llnode_real), pointer :: realnode
-  type(llnode_int), pointer :: intnode
+  ! data stored internally in linked lists, one per trajectory
+  type(linkedlist_real), allocatable :: ll_col_times(:)
+  type(linkedlist_int), allocatable :: ll_col_which(:)
 
   ! Integer denoting the type of unravelling
   ! 1 for jump unravelling
@@ -259,6 +258,26 @@ module qutraj_run
     call new(csr_ptr,sol_rho(i)%pb)
     csr_nrows = sol_rho(i)%m
     csr_ncols = sol_rho(i)%k
+    !if (i==size(tlist)) then
+    !  call finalize(csr_val)
+    !  call finalize(csr_col)
+    !  call finalize(csr_ptr)
+    !endif
+  end subroutine
+
+  subroutine get_collapses(traj)
+    integer, intent(in) :: traj
+    integer :: i
+    ! Turn linked lists into arrays
+    call ll_to_array(ll_col_times(traj),col_times)
+    call ll_to_array(ll_col_which(traj),col_which)
+    if (traj==ntraj) then
+      do i=1,ntraj
+        call finalize(ll_col_times(i))
+        call finalize(ll_col_which(i))
+      enddo
+      deallocate(ll_col_times,ll_col_which)
+    endif
   end subroutine
 
   !
@@ -314,10 +333,27 @@ module qutraj_run
         sol = (0.,0.)
       endif
     endif
-    if (istat.ne.0) call fatal_error("evolve: could not allocate solution.",&
-      istat)
-    if (istat2.ne.0) call fatal_error("evolve: could not allocate rho.",&
+    if (istat.ne.0) call fatal_error("evolve: could not allocate.",istat)
+    if (istat2.ne.0) call fatal_error("evolve: could not allocate.",&
       istat2)
+
+    ! Allocate linked lists for collapse times and operators
+    if (allocated(ll_col_times)) then
+      deallocate(ll_col_times,stat=istat)
+      if (istat.ne.0) then
+        call error("evolve: could not deallocate.",istat)
+      endif
+    endif
+    if (allocated(ll_col_times)) then
+      deallocate(ll_col_times,stat=istat)
+      if (istat.ne.0) then
+        call error("evolve: could not deallocate.",istat)
+      endif
+    endif
+    allocate(ll_col_times(ntraj),stat=istat)
+    if (istat.ne.0) call fatal_error("evolve: could not allocate.",istat)
+    allocate(ll_col_which(ntraj),stat=istat)
+    if (istat.ne.0) call fatal_error("evolve: could not allocate.",istat)
 
     ! Allocate work arrays
     call new(y,ode%neq)
@@ -349,7 +385,8 @@ module qutraj_run
         endif
         select case(unravel_type)
         case(1)
-          call evolve_jump(t,tout,y,y_tmp,p,mu,nu)
+          call evolve_jump(t,tout,y,y_tmp,p,mu,nu,&
+            ll_col_times(traj),ll_col_which(traj))
         case default
           call fatal_error('Unknown unravel type.')
         end select
@@ -407,9 +444,6 @@ module qutraj_run
         sol = (1._wp/ntraj)*sol
       endif
     endif
-    ! Turn linked lists into arrays
-    call ll_to_array(ll_col_times,col_times)
-    call ll_to_array(ll_col_which,col_which)
     ! Deallocate
     call finalize(y)
     call finalize(y_tmp)
@@ -470,6 +504,18 @@ module qutraj_run
     integer :: istat=0
     call finalize(tlist)
     call finalize(sol_rho)
+    if (allocated(ll_col_times)) then
+      deallocate(ll_col_times,stat=istat)
+    endif
+    if (istat.ne.0) then
+      call error("finalize_sol: could not deallocate.",istat)
+    endif
+    if (allocated(ll_col_which)) then
+      deallocate(ll_col_which,stat=istat)
+    endif
+    if (istat.ne.0) then
+      call error("finalize_sol: could not deallocate.",istat)
+    endif
     if (allocated(sol)) then
       deallocate(sol,stat=istat)
     endif
@@ -506,7 +552,7 @@ module qutraj_run
   ! Evolution subs
   !
 
-  subroutine evolve_jump(t,tout,y,y_tmp,p,mu,nu)
+  subroutine evolve_jump(t,tout,y,y_tmp,p,mu,nu,ll_col_times,ll_col_which)
     !
     ! Evolve quantum trajectory y(t) to y(tout) using ``jump'' method
     !
@@ -518,6 +564,8 @@ module qutraj_run
     double precision, intent(inout) :: t, tout
     real(wp), intent(inout) :: p(:)
     real(wp), intent(inout) :: mu,nu
+    type(linkedlist_real), intent(inout) :: ll_col_times
+    type(linkedlist_int), intent(inout) :: ll_col_which
     double precision :: t_prev, t_final, t_guess
     integer :: j,k
     integer :: cnt
@@ -625,10 +673,8 @@ module qutraj_run
           if ((sump <= nu) .and. (nu < sump+p(j))) then
             y = c_ops(j)*y
             ! Append collapse time and operator # to linked lists
-            call new(realnode,t)
-            call new(intnode,j)
-            call append(ll_col_times,realnode)
-            call append(ll_col_which,intnode)
+            call append(ll_col_times,t)
+            call append(ll_col_which,j)
           endif
           sump = sump+p(j)
         enddo

@@ -25,11 +25,11 @@ def test():
     nstep = int(T/dt)
     tlist = np.linspace(0,T,nstep)
 
-    ntraj=10000
+    ntraj=4
 
     # set options
     opts = qt.Odeoptions()
-    opts.num_cpus=1
+    opts.num_cpus=4
     #opts.mc_avg = True
     #opts.gui=False
     #opts.max_step=1000
@@ -75,11 +75,11 @@ def test():
         sol_mcexpect = sol_mc.expect
         sol_meexpect = sol_me.expect
 
-    plt.figure()
-    for i in range(len(e_ops)):
-        plt.plot(tlist,sol_f90expect[i],'b')
-        plt.plot(tlist,sol_mcexpect[i],'g')
-        plt.plot(tlist,sol_meexpect[i],'k')
+    #plt.figure()
+    #for i in range(len(e_ops)):
+    #    plt.plot(tlist,sol_f90expect[i],'b')
+    #    plt.plot(tlist,sol_mcexpect[i],'g')
+    #    plt.plot(tlist,sol_meexpect[i],'k')
 
     return sol_f90, sol_mc
 
