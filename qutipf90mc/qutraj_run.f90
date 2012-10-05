@@ -102,9 +102,10 @@ module qutraj_run
   type(linkedlist_int), allocatable :: ll_col_which(:)
 
   ! Integer denoting the type of unravelling
-  ! 1 for jump unravelling
+  ! 1 for no collapse operatros
+  ! 2 for jump unravelling
   ! diffusive unravellings to be implemented
-  integer :: unravel_type = 1
+  integer :: unravel_type = 2
 
   !
   ! Interfaces
@@ -135,6 +136,8 @@ module qutraj_run
   end subroutine
 
   subroutine init_hamiltonian(val,col,ptr,m,k,nnz,nptr)
+    ! Hamiltonian is assumed to be given as
+    ! -i*(H-0.5 sum c_ops(i)^* c_ops(i))
     use qutraj_precision
     integer, intent(in) :: nnz,nptr,m,k
     complex(wp), intent(in)  :: val(nnz)
@@ -288,6 +291,27 @@ module qutraj_run
     integer :: i,j,l,m,n
     real(wp) :: mu,nu
     real(wp), allocatable :: p(:)
+    ! ITASK  = An index specifying the task to be performed.
+    !          Input only.  ITASK has the following values and meanings.
+    !          1  means normal computation of output values of y(t) at
+    !             t = TOUT (by overshooting and interpolating).
+    !          2  means take one step only and return.
+    !          3  means stop at the first internal mesh point at or
+    !             beyond t = TOUT and return.
+    !          4  means normal computation of output values of y(t) at
+    !             t = TOUT but without overshooting t = TCRIT.
+    !             TCRIT must be input as RWORK(1).  TCRIT may be equal to
+    !             or beyond TOUT, but not behind it in the direction of
+    !             integration.  This option is useful if the problem
+    !             has a singularity at or beyond t = TCRIT.
+    !          5  means take one step, without passing TCRIT, and return.
+    !             TCRIT must be input as RWORK(1).
+    !
+    !          Note:  If ITASK = 4 or 5 and the solver reaches TCRIT
+    !          (within roundoff), it will return T = TCRIT (exactly) to
+    !          indicate this (unless ITASK = 4 and TOUT comes before 
+    !          TCRIT, in which case answers at T = TOUT are returned 
+    !          first).
 
     ! Allocate solution array
     if (allocated(sol)) then
@@ -350,6 +374,27 @@ module qutraj_run
     ! Initalize rng
     call init_genrand(rngseed)
 
+    ! Initial ode setup
+    if (unravel_type==1) then
+      ! integrate one until specified time, w/o overshooting
+      ode%itask = 4
+    elseif (unravel_type==2) then
+      ! integrate one step at the time, w/o overshooting
+      ode%itask = 5
+    endif
+    ! set optinal arguments
+    ! see zvode.f
+    ode%rwork = 0.0
+    ode%iwork = 0
+    ode%rwork(5) = first_step
+    ode%rwork(6) = max_step
+    ode%rwork(7) = min_step
+    ode%iwork(5) = order
+    ode%iwork(6) = nsteps
+    ode%iopt = 1
+    ! first call to zvode
+    ode%istate = 1
+
     ! Loop over trajectories
     progress = 1
     do traj=1,ntraj
@@ -372,6 +417,8 @@ module qutraj_run
         endif
         select case(unravel_type)
         case(1)
+          call evolve_nocollapse(t,tout,y,y_tmp)
+        case(2)
           call evolve_jump(t,tout,y,y_tmp,p,mu,nu,&
             ll_col_times(traj),ll_col_which(traj))
         case default
@@ -534,6 +581,19 @@ module qutraj_run
   !
   ! Evolution subs
   !
+  subroutine evolve_nocollapse(t,tout,y,y_tmp)
+    double complex, intent(inout) :: y(:),y_tmp(:)
+    double precision, intent(inout) :: t, tout
+
+    ! integrate up to tout without overshooting
+    ode%rwork(1) = tout
+
+    call nojump(y,t,tout,ode%itask,ode)
+    if (ode%istate.lt.0) then
+      write(*,*) "zvode error: istate=",ode%istate
+      !stop
+    endif
+  end subroutine
 
   subroutine evolve_jump(t,tout,y,y_tmp,p,mu,nu,ll_col_times,ll_col_which)
     !
@@ -554,48 +614,9 @@ module qutraj_run
     integer :: cnt
     real(wp) :: norm2_psi,norm2_prev,norm2_guess,sump
     logical, save :: first = .true.
-    ! ITASK  = An index specifying the task to be performed.
-    !          Input only.  ITASK has the following values and meanings.
-    !          1  means normal computation of output values of y(t) at
-    !             t = TOUT (by overshooting and interpolating).
-    !          2  means take one step only and return.
-    !          3  means stop at the first internal mesh point at or
-    !             beyond t = TOUT and return.
-    !          4  means normal computation of output values of y(t) at
-    !             t = TOUT but without overshooting t = TCRIT.
-    !             TCRIT must be input as RWORK(1).  TCRIT may be equal to
-    !             or beyond TOUT, but not behind it in the direction of
-    !             integration.  This option is useful if the problem
-    !             has a singularity at or beyond t = TCRIT.
-    !          5  means take one step, without passing TCRIT, and return.
-    !             TCRIT must be input as RWORK(1).
-    !
-    !          Note:  If ITASK = 4 or 5 and the solver reaches TCRIT
-    !          (within roundoff), it will return T = TCRIT (exactly) to
-    !          indicate this (unless ITASK = 4 and TOUT comes before 
-    !          TCRIT, in which case answers at T = TOUT are returned 
-    !          first).
-    if (first) then
-      ! integrate one step at the time, w/o overshooting
-      ode%itask = 5
-      ! set optinal arguments
-      ! see zvode.f
-      ode%rwork = 0.0
-      ode%iwork = 0
-      ode%rwork(5) = first_step
-      ode%rwork(6) = max_step
-      ode%rwork(7) = min_step
-      ode%iwork(5) = order
-      ode%iwork(6) = nsteps
-      ode%iopt = 1
-      ! first call to zvode
-      ode%istate = 1
-      first = .false.
-    endif
 
     ode%rwork(1) = tout
     norm2_psi = abs(braket(y,y))
-    !write(*,*) y
     do while(t<tout)
       t_prev = t
       y_tmp = y
@@ -695,7 +716,7 @@ module qutraj_run
     complex(wp) :: y(neq), ydot(neq),rpar
     real(wp) :: t
     integer :: ipar,neq
-    ydot = -ii*(hamilt*y)
+    ydot = (hamilt*y)
   end subroutine
 
   subroutine dummy_jac (neq, t, y, ml, mu, pd, nrpd, rpar, ipar)

@@ -10,11 +10,8 @@ Features:
 - Time evolution algorithm from QuTiP v2.1.0 to find correct times for jumps.
 - Automatic parallelization via Python's multiprocessing module.
 
-Missing features, to be implemented:
+Missing features:
 - Does not accept list as "ntraj" argument.
-- Does not return col_times and col_which Odedata parameters.
-
-Missing features, not to be implemented in foreseable future:
 - Only solves prolbems without explicit time-dependence.
 
 Installation:

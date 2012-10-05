@@ -33,8 +33,8 @@ def run():
     # run monte carlo simulation
     ntraj=[1,5,15,904] # list of number of trajectories to avg. over
     tlist=linspace(0,0.6,100)
-    #mc = mcf90.mcsolve_f90(H,psi0,tlist,c_op_list,[a.dag()*a],ntraj)
-    mc = mcsolve(H,psi0,tlist,c_op_list,[a.dag()*a],ntraj)
+    mc = mcf90.mcsolve_f90(H,psi0,tlist,c_op_list,[a.dag()*a],ntraj)
+    #mc = mcsolve(H,psi0,tlist,c_op_list,[a.dag()*a],ntraj)
     # get expectation values from mc data (need extra index since ntraj is list)
     ex1=mc.expect[0][0]     #for ntraj=1
     ex5=mc.expect[1][0]     #for ntraj=5
@@ -105,6 +105,7 @@ def run():
     ax1.xaxis.set_major_locator(MaxNLocator(4))
     xlabel('Time (sec)',fontsize=14)
     show()
+    return mc
 
 
 if __name__=="__main__":
