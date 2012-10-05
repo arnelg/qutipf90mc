@@ -16,8 +16,9 @@ def test():
     #e_ops = [ad*a]
     H = qt.sigmax()
     c_ops = [np.sqrt(gamma)*qt.sigmax()]
-    #e_ops = [qt.sigmam()*qt.sigmap(),qt.sigmap()*qt.sigmam()]
-    e_ops = []
+    #c_ops = []
+    e_ops = [qt.sigmam()*qt.sigmap(),qt.sigmap()*qt.sigmam()]
+    #e_ops = []
 
     # Times
     T = 2.0
@@ -25,7 +26,7 @@ def test():
     nstep = int(T/dt)
     tlist = np.linspace(0,T,nstep)
 
-    ntraj=8
+    ntraj=100
 
     # set options
     opts = qt.Odeoptions()
@@ -38,7 +39,7 @@ def test():
 
     sol_f90 = qt.Odedata()
     start_time = time.time()
-    sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts,states_as_kets=False,sparse_dms=True)
+    sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)
     print "mcsolve_f90 solutiton took", time.time()-start_time, "s"
 
     sol_me = qt.Odedata()
@@ -75,36 +76,28 @@ def test():
         sol_mcexpect = sol_mc.expect
         sol_meexpect = sol_me.expect
 
-    #plt.figure()
-    #for i in range(len(e_ops)):
-    #    plt.plot(tlist,sol_f90expect[i],'b')
-    #    plt.plot(tlist,sol_mcexpect[i],'g')
-    #    plt.plot(tlist,sol_meexpect[i],'k')
+    plt.figure()
+    for i in range(len(e_ops)):
+        plt.plot(tlist,sol_f90expect[i],'b')
+        plt.plot(tlist,sol_mcexpect[i],'g')
+        plt.plot(tlist,sol_meexpect[i],'k')
 
     return sol_f90, sol_mc
 
-def rundemo(no):
+def rundemo(no,fig=False):
     import qutipf90mc.examples as examples
     print 'running demo #',str(no),'from qutip'
+    raw_input('press a key to continue')
     funcstr = 'examples.ex_'+str(no)+'.run()'
     ex_code = compile(funcstr,'<string>','exec')
+    if (fig): plt.figure()
     eval(ex_code)
 
 def testdemos():
-    #raw_input('press a key to continue')
-    plt.figure()
-    rundemo(24)
-    #raw_input('press a key to continue')
-    plt.figure()
-    rundemo(30)
-    #raw_input('press a key to continue')
-    plt.figure()
-    rundemo(31)
-    #raw_input('press a key to continue')
-    #plt.figure()
+    rundemo(24,fig=True)
+    rundemo(30,fig=True)
+    rundemo(31,fig=True)
     rundemo(33)
-    #raw_input('press a key to continue')
-    #plt.figure()
     rundemo(34)
 
 if __name__ == '__main__':

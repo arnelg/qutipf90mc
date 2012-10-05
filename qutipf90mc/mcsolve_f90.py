@@ -2,6 +2,8 @@ import numpy as np
 from qutip import *
 import qutraj_run as qtf90
 import qutip.odeconfig as odeconfig
+from qutip.mcsolve import _mc_data_config
+from qutip._reset import _reset_odeconfig
 
 # Working precision
 wpr = dtype(float64)
@@ -42,22 +44,53 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
 
     """
     from multiprocessing import cpu_count
-    mc = _MC_class()
     if psi0.type!='ket':
         raise Exception("Initial state must be a state vector.")
+    odeconfig.options = options
+    #set num_cpus to the value given in qutip.settings 
+    # if none in Odeoptions
+    if not odeconfig.options.num_cpus:
+        odeconfig.options.num_cpus=qutip.settings.num_cpus
     #set initial value data
     if options.tidy:
-        mc.psi0=psi0.tidyup(options.atol)
+        odeconfig.psi0=psi0.tidyup(options.atol).full()
     else:
-        mc.psi0=psi0
-    mc.dims = psi0.dims
-    mc.dm_dims = (psi0*psi0.dag()).dims
-    mc.H = H
-    mc.tlist = tlist
-    mc.c_ops = c_ops
-    mc.e_ops = e_ops
-    mc.ntraj = ntraj
-    mc.options = options
+        odeconfig.psi0=psi0.full()
+    odeconfig.psi0_dims=psi0.dims
+    odeconfig.psi0_shape=psi0.shape
+    #set general items
+    odeconfig.tlist=tlist
+    if isinstance(ntraj,(list,ndarray)):
+        print 'mcsolve_f90: Sorry, ntraj as list argument is not supported.'
+        return
+        #odeconfig.ntraj=sort(ntraj)[-1]
+        #ntraj_list = ntraj
+    else:
+        odeconfig.ntraj=ntraj
+        #ntraj_list = [ntraj]
+    #set norm finding constants
+    odeconfig.norm_tol=options.norm_tol
+    odeconfig.norm_steps=options.norm_steps
+
+    if (not options.rhs_reuse):
+        _reset_odeconfig()
+        # no time dependence
+        odeconfig.tflag=0
+        # no gui
+        odeconfig.options.gui=False
+        #check for collapse operators
+        if len(c_ops)>0:
+            odeconfig.cflag=1
+        else:
+            odeconfig.cflag=0
+        #Configure data
+        _mc_data_config(H,psi0,[],c_ops,[],[],e_ops,options)
+        # We don't use the tdfunc structure
+        odeconfig.tdfunc = None
+
+    # Load Monte Carlo class
+    mc = _MC_class()
+    # Set solver type
     if (options.method == 'adams'):
         mc.mf = 10
     elif (options.method == 'bdf'):
@@ -65,47 +98,64 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
     else:
         print 'unrecognized method for ode solver, using "adams".'
         mc.mf = 10
-    if (options.num_cpus == 0):
-        mc.ncpus = cpu_count()
-    else:
-        mc.ncpus = options.num_cpus
-    mc.nprocs = mc.ncpus
+    # store ket and density matrix dims and shape for convenience
+    mc.psi0_dims = psi0.dims
+    mc.psi0_shape = psi0.shape
+    mc.dm_dims = (psi0*psi0.dag()).dims
+    mc.dm_shape = (psi0*psi0.dag()).shape
+    # use sparse density matrices during computation?
     mc.sparse_dms = sparse_dms
+    # run in serial?
     mc.serial_run = serial
+
+    # construct output Odedata object
+    output = Odedata()
+
+    # Run
     mc.run()
-    return mc.sol
+    output.states = mc.sol.states
+    output.expect = mc.sol.expect
+    output.col_times=mc.sol.col_times
+    output.col_which=mc.sol.col_which
+
+    output.solver = 'Fortran 90 Monte Carlo solver'
+    #simulation parameters
+    output.times=odeconfig.tlist
+    output.num_expect=odeconfig.e_num
+    output.num_collapse=odeconfig.c_num
+    output.ntraj=odeconfig.ntraj
+
+    return output
 
 class _MC_class():
     def __init__(self):
-        self.H = Qobj()
-        self.psi0 = Qobj()
-        self.dims = []
-        self.tlist = []
-        self.c_ops = [Qobj()]
-        self.e_ops = [Qobj()]
-        self.ntraj = 0
-        self.ntrajs = []
-        self.options = Odeoptions()
-        self.ncpus = 0
-        self.nprocs = 0
-        self.sol = [Odedata()]
-        self.states = True
+        self.cpus = odeconfig.options.num_cpus
+        self.nprocs = self.cpus
+        self.sol = Odedata()
         self.mf = 10
         # If returning density matrices, return as sparse or dense?
         self.sparse_dms = True
         # Run in serial?
         self.serial_run = False
+        self.ntraj = odeconfig.ntraj
+        self.ntrajs = []
+        self.seed = None
+        self.psi0_dims = None
+        self.psi0_shape = None
+        self.dm_dims = None
+        self.dm_shape = None
+        self.unravel_type = 2
 
     def parallel(self):
         from multiprocessing import Process, Queue, JoinableQueue
-        from random import randint
         self.ntrajs = []
-        for i in range(self.ncpus):
-            self.ntrajs.append(min(int(floor(float(self.ntraj)/self.ncpus)),
+        for i in range(self.cpus):
+            self.ntrajs.append(min(int(floor(float(self.ntraj)
+                /self.cpus)),
                 self.ntraj-sum(self.ntrajs)))
         cnt = sum(self.ntrajs)
         while cnt<self.ntraj:
-            for i in range(self.ncpus):
+            for i in range(self.cpus):
                 self.ntrajs[i] += 1
                 cnt+=1
                 if (cnt>=self.ntraj):
@@ -116,14 +166,13 @@ class _MC_class():
         sols = []
         processes = []
         resq = JoinableQueue()
-        print "Number of cpus:", self.ncpus
+        print "Number of cpus:", self.cpus
         print "Trying to start", self.nprocs, "process(es)."
         print "Number of trajectories for each process:"
         print self.ntrajs
-        seedmultiplier = randint(0,100)
         for i in range(self.nprocs):
             p = Process(target=self.evolve_serial,
-                    args=((resq,self.ntrajs[i],i,seedmultiplier*(i+1)),))
+                    args=((resq,self.ntrajs[i],i,self.seed*(i+1)),))
             p.start()
             processes.append(p)
         resq.join()
@@ -152,115 +201,75 @@ class _MC_class():
     def serial(self):
         from random import randint
         self.nprocs = 1
+        self.ntrajs = [self.ntraj]
         print "Running in serial."
         print "Number of trajectories:", self.ntraj
-        sol = self.evolve_serial((0,self.ntraj,0,randint(0,100)))
+        sol = self.evolve_serial((0,self.ntraj,0,self.seed))
         return [sol]
 
     def run(self):
-        if (self.c_ops == []):
+        from numpy.random import random_integers
+        if (odeconfig.c_num == 0):
             # force one trajectory if no collapse operators
+            odeconfig.ntraj=1
             self.ntraj=1
-        if (self.e_ops == []):
-            self.states=True
-        else:
-            self.states=False
-        # run in paralell
+            # Set unravel_type to 1 to integrate without collapses
+            self.unravel_type = 1
+            if (odeconfig.e_num==0):
+                # If we are returning states, and there are no
+                # collapse operators, set mc_avg to False to return
+                # ket vectors instead of density matrices
+                odeconfig.options.mc_avg=False
+        # generate a random seed, useful if e.g. running with MPI
+        self.seed = random_integers(1e8)
         if (self.serial_run):
+            # run in serial
             sols = self.serial()
         else:
+            # run in paralell
             sols = self.parallel()
         # gather data
-        self.sol = self.gather(sols)
-        # misc.
-        self.sol.ntraj=self.ntraj
-        self.sol.num_collapse=size(self.c_ops)
-        self.sol.num_expect=size(self.e_ops)
-        self.sol.solver='Fortran 90 Monte Carlo Solver'
-        self.sol.times = self.tlist
-
-    def gather(self,sols):
-        # gather list of Odedata objects, sols, into one
-        sol = Odedata()
-        #sol = sols[0]
-        sol.col_times = np.zeros((self.ntraj),dtype=np.ndarray)
-        sol.col_which = np.zeros((self.ntraj),dtype=np.ndarray)
-        sol.col_times[0:self.ntrajs[0]] = sols[0].col_times
-        sol.col_which[0:self.ntrajs[0]] = sols[0].col_which
-        sol.states = sols[0].states
-        sol.expect = sols[0].expect
-        sofar = 0
-        for j in range(1,self.nprocs):
-            sofar = sofar + self.ntrajs[j-1]
-            sol.col_times[sofar:sofar+self.ntrajs[j]] = (
-                    sols[j].col_times)
-            sol.col_which[sofar:sofar+self.ntrajs[j]] = (
-                    sols[j].col_which)
-            if (self.states):
-                if (self.options.mc_avg):
-                    # collect states, averaged over trajectories
-                    sol.states += sols[j].states
-                else:
-                    # collect states, all trajectories
-                    sol.states = np.concatenate([sol.states,
-                        sols[j].states])
-            else:
-                if (self.options.mc_avg):
-                    # collect expectation values, averaged
-                    for i in range(len(self.e_ops)):
-                        sol.expect[i] += sols[j].expect[i]
-                else:
-                    # collect expectation values, all trajectories
-                    sol.expect = np.concatenate([sol.expect,
-                        sols[j].expect])
-        if (self.options.mc_avg):
-            if (self.states):
-                sol.states = sol.states/self.nprocs
-            else:
-                sol.expect = sol.expect/self.nprocs
-        # convert to list/array to be consistent with qutip mcsolve
-        sol.states = list(sol.states)
-        sol.expect = list(sol.expect)
-        return sol
+        self.sol = _gather(sols,self.ntrajs)
 
     def evolve_serial(self,args):
         # run ntraj trajectories for one process via fortran
         # get args
         queue,ntraj,instanceno,rngseed = args
         # initialize the problem in fortran
-        _init_tlist(self.tlist)
-        _init_psi0(self.psi0)
-        _init_hamilt(self.H,self.c_ops)
-        if (self.c_ops != []):
-            _init_c_ops(self.c_ops)
-        if (self.e_ops != []):
-            _init_e_ops(self.e_ops)
+        _init_tlist()
+        _init_psi0()
+        _init_hamilt()
+        if (odeconfig.c_num != 0):
+            _init_c_ops()
+        if (odeconfig.e_num != 0):
+            _init_e_ops()
         # set options
         qtf90.qutraj_run.ntraj = ntraj
-        qtf90.qutraj_run.mc_avg = self.options.mc_avg
-        qtf90.qutraj_run.init_odedata(self.psi0.shape[0],
-                self.options.atol,self.options.rtol,mf=self.mf)
+        qtf90.qutraj_run.unravel_type = self.unravel_type
+        qtf90.qutraj_run.mc_avg = odeconfig.options.mc_avg
+        qtf90.qutraj_run.init_odedata(odeconfig.psi0_shape[0],
+                odeconfig.options.atol,odeconfig.options.rtol,mf=self.mf)
         # set optional arguments
-        qtf90.qutraj_run.order = self.options.order
-        qtf90.qutraj_run.nsteps = self.options.nsteps
-        qtf90.qutraj_run.first_step = self.options.first_step
-        qtf90.qutraj_run.min_step = self.options.min_step
-        qtf90.qutraj_run.max_step = self.options.max_step
-        qtf90.qutraj_run.norm_steps=self.options.norm_steps
-        qtf90.qutraj_run.norm_tol=self.options.norm_tol
+        qtf90.qutraj_run.order = odeconfig.options.order
+        qtf90.qutraj_run.nsteps = odeconfig.options.nsteps
+        qtf90.qutraj_run.first_step = odeconfig.options.first_step
+        qtf90.qutraj_run.min_step = odeconfig.options.min_step
+        qtf90.qutraj_run.max_step = odeconfig.options.max_step
+        qtf90.qutraj_run.norm_steps=odeconfig.options.norm_steps
+        qtf90.qutraj_run.norm_tol=odeconfig.options.norm_tol
         # use sparse density matrices during computation?
         qtf90.qutraj_run.rho_return_sparse = self.sparse_dms
         # run
-        qtf90.qutraj_run.evolve(self.states,instanceno,rngseed)
+        qtf90.qutraj_run.evolve(odeconfig.e_num==0,instanceno,rngseed)
         # construct Odedata instance
         sol = Odedata()
         #sol.col_times = qtf90.qutraj_run.col_times
         #sol.col_which = qtf90.qutraj_run.col_which-1
         sol.col_times, sol.col_which = self.get_collapses(ntraj)
-        if (self.states):
-            sol.states = self.get_states(size(self.tlist),ntraj)
+        if (odeconfig.e_num==0):
+            sol.states = self.get_states(size(odeconfig.tlist),ntraj)
         else:
-            sol.expect = self.get_expect(size(self.tlist),size(self.e_ops))
+            sol.expect = self.get_expect(size(odeconfig.tlist))
         if (not self.serial_run):
             # put to queue
             queue.put(sol)
@@ -273,6 +282,9 @@ class _MC_class():
     def get_collapses(self,ntraj):
         col_times = np.zeros((ntraj),dtype=np.ndarray)
         col_which = np.zeros((ntraj),dtype=np.ndarray)
+        if (odeconfig.c_num==0):
+            # no collapses
+            return col_times, col_which
         for i in range(ntraj):
             qtf90.qutraj_run.get_collapses(i+1)
             times = qtf90.qutraj_run.col_times
@@ -286,7 +298,7 @@ class _MC_class():
 
     def get_states(self,nstep,ntraj):
         from scipy.sparse import csr_matrix
-        if (self.options.mc_avg):
+        if (odeconfig.options.mc_avg):
             states=np.array([Qobj()]*nstep)
             if (self.sparse_dms):
                 # averaged sparse density matrices
@@ -299,29 +311,37 @@ class _MC_class():
                     k = qtf90.qutraj_run.csr_ncols
                     states[i] = Qobj(csr_matrix((val,col,ptr),
                         (m,k)).toarray(),
-                        dims=self.dm_dims)
+                        dims=self.dm_dims,shape=self.dm_shape)
             else:
                 # averaged dense density matrices
                 for i in range(nstep):
                     states[i] = Qobj(qtf90.qutraj_run.sol[0,i,:,:],
-                        dims=self.dm_dims)
+                        dims=self.dm_dims,shape=self.dm_shape)
         else:
             # all trajectories as kets
-            states=np.array([np.array([Qobj()]*nstep)]*ntraj)
-            for traj in range(ntraj):
+            if (ntraj==1):
+                states=np.array([Qobj()]*nstep)
                 for i in range(nstep):
-                    states[traj][i] = Qobj(matrix(
-                        qtf90.qutraj_run.sol[0,traj,i,:]).transpose(),
-                        dims=self.dims)
+                    states[i] = Qobj(matrix(
+                        qtf90.qutraj_run.sol[0,0,i,:]).transpose(),
+                        dims=self.psi0_dims,shape=self.psi0_shape)
+            else:
+                states=np.array([np.array([Qobj()]*nstep)]*ntraj)
+                for traj in range(ntraj):
+                    for i in range(nstep):
+                        states[traj][i] = Qobj(matrix(
+                            qtf90.qutraj_run.sol[0,traj,i,:]).transpose(),
+                            dims=self.psi0_dims,shape=self.psi0_shape)
         return states
-    def get_expect(self,nstep,n_e_ops):
-        if (self.options.mc_avg):
-            expect=np.array([np.array([0.+0.j]*nstep)]*n_e_ops)
-            for j in range(n_e_ops):
+    def get_expect(self,nstep):
+        if (odeconfig.options.mc_avg):
+            expect=np.array([np.array([0.+0.j]*nstep)]*odeconfig.e_num)
+            for j in range(odeconfig.e_num):
                 expect[j] = qtf90.qutraj_run.sol[j,0,:,0]
         else:
-            expect=np.array([[np.array([0.+0.j]*nstep)]*n_e_ops]*ntraj)
-            for j in range(n_e_ops):
+            expect=np.array([[np.array([0.+0.j]*nstep)]*odeconfig.e_num]
+                    *ntraj)
+            for j in range(odeconfig.e_num):
                 expect[:,j,:] = qtf90.qutraj_run.sol[j,:,:,0]
         return expect
     def finalize():
@@ -329,39 +349,104 @@ class _MC_class():
         qtf90.qutraj_run.finalize_work()
         qtf90.qutraj_run.finalize_sol()
 
+def _gather(sols,ntrajs):
+    # gather list of Odedata objects, sols, into one.
+    # ntrajs is a list of number of trajectories for each
+    # element in sols.
+    sol = Odedata()
+    #sol = sols[0]
+    sol.col_times = np.zeros((sum(ntrajs)),dtype=np.ndarray)
+    sol.col_which = np.zeros((sum(ntrajs)),dtype=np.ndarray)
+    sol.col_times[0:ntrajs[0]] = sols[0].col_times
+    sol.col_which[0:ntrajs[0]] = sols[0].col_which
+    sol.states = np.array(sols[0].states)
+    sol.expect = np.array(sols[0].expect)
+    sofar = 0
+    for j in range(1,len(sols)):
+        sofar = sofar + ntrajs[j-1]
+        sol.col_times[sofar:sofar+ntrajs[j]] = (
+                sols[j].col_times)
+        sol.col_which[sofar:sofar+ntrajs[j]] = (
+                sols[j].col_which)
+        if (odeconfig.e_num==0):
+            if (odeoptions.options.mc_avg):
+                # collect states, averaged over trajectories
+                sol.states += np.array(sols[j].states)
+            else:
+                # collect states, all trajectories
+                sol.states = np.concatenate([sol.states,
+                    np.array(sols[j].states)])
+        else:
+            if (odeconfig.options.mc_avg):
+                # collect expectation values, averaged
+                for i in range(odeconfig.e_num):
+                    sol.expect[i] += np.array(sols[j].expect[i])
+            else:
+                # collect expectation values, all trajectories
+                sol.expect = np.concatenate([sol.expect,
+                    np.array(sols[j].expect)])
+    if (odeconfig.options.mc_avg):
+        if (odeconfig.e_num==0):
+            sol.states = sol.states/len(sols)
+        else:
+            sol.expect = sol.expect/len(sols)
+    # convert to list/array to be consistent with qutip mcsolve
+    sol.states = list(sol.states)
+    sol.expect = list(sol.expect)
+    return sol
+
 #
 # Functions to initialize the problem in fortran
 #
 
-def _init_tlist(tlist):
-    Of = _realarray_to_fortran(tlist)
+def _init_tlist():
+    Of = _realarray_to_fortran(odeconfig.tlist)
     qtf90.qutraj_run.init_tlist(Of,
             size(Of))
-def _init_psi0(psi0):
-    Of = _qobj_to_fortranfull(psi0)
+
+def _init_psi0():
+    #Of = _qobj_to_fortranfull(odeconfig.psi0)
+    Of = _complexarray_to_fortran(odeconfig.psi0)
     qtf90.qutraj_run.init_psi0(Of,size(Of))
-def _init_hamilt(H,c_ops):
+
+def _init_hamilt():
     # construct effective non-Hermitian Hamiltonian
-    H_eff = H - 0.5j*sum([c_ops[i].dag()*c_ops[i]
-        for i in range(len(c_ops))])
-    Of = _qobj_to_fortrancsr(H_eff)
-    qtf90.qutraj_run.init_hamiltonian(Of[0],Of[1],
-            Of[2],Of[3],Of[4])
-def _init_c_ops(c_ops):
-    n = len(c_ops)
+    #H_eff = H - 0.5j*sum([c_ops[i].dag()*c_ops[i]
+    #    for i in range(len(c_ops))])
+    #Of = _qobj_to_fortrancsr(H_eff)
+    #qtf90.qutraj_run.init_hamiltonian(Of[0],Of[1],
+    #        Of[2],Of[3],Of[4])
+    d = size(odeconfig.psi0)
+    qtf90.qutraj_run.init_hamiltonian(
+            _complexarray_to_fortran(odeconfig.h_data),
+            odeconfig.h_ind+1,odeconfig.h_ptr+1,d,d)
+
+def _init_c_ops():
+    d = size(odeconfig.psi0)
+    n = odeconfig.c_num
     first = True
     for i in range(n):
-        Of = _qobj_to_fortrancsr(c_ops[i])
-        qtf90.qutraj_run.init_c_ops(i+1,n,Of[0],Of[1],
-                Of[2],Of[3],Of[4],first)
+        #Of = _qobj_to_fortrancsr(c_ops[i])
+        #qtf90.qutraj_run.init_c_ops(i+1,n,Of[0],Of[1],
+        #        Of[2],Of[3],Of[4],first)
+        qtf90.qutraj_run.init_c_ops(i+1,n,
+                _complexarray_to_fortran(odeconfig.c_ops_data[i]),
+                odeconfig.c_ops_ind[i]+1,odeconfig.c_ops_ptr[i]+1,d,d,
+                first)
         first = False
-def _init_e_ops(e_ops):
-    n = len(e_ops)
+
+def _init_e_ops():
+    d = size(odeconfig.psi0)
+    n = odeconfig.e_num
     first = True
     for i in range(n):
-        Of = _qobj_to_fortrancsr(e_ops[i])
-        qtf90.qutraj_run.init_e_ops(i+1,n,Of[0],Of[1],
-                Of[2],Of[3],Of[4],first)
+        #Of = _qobj_to_fortrancsr(e_ops[i])
+        #qtf90.qutraj_run.init_e_ops(i+1,n,Of[0],Of[1],
+        #        Of[2],Of[3],Of[4],first)
+        qtf90.qutraj_run.init_e_ops(i+1,n,
+                _complexarray_to_fortran(odeconfig.e_ops_data[i]),
+                odeconfig.e_ops_ind[i]+1,odeconfig.e_ops_ptr[i]+1,d,d,
+                first)
         first = False
 #
 # Misc. converison functions
