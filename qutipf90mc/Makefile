@@ -15,9 +15,10 @@ ZVODE_SRCS = $(ZVODE:=.f)
 
 MODS = qutraj_precision
 MODS += mt19937
+MODS += linked_list
 MODS += qutraj_general
 MODS += qutraj_hilbert
-MODS += linked_list
+MODS += qutraj_evolve
 
 OBJS = $(MODS:=.o)
 SRCS += $(MODS:=.f90)
@@ -72,7 +73,8 @@ clean:
 # Dependencies
 #
 
-qutraj_run: qutraj_run.f90 qutraj_precision.o qutraj_general.o linked_list.o mt19937.o zvode/zvode.o
+qutraj_run: qutraj_run.f90 qutraj_precision.o qutraj_general.o qutraj_evolve.o linked_list.o mt19937.o
+qutraj_evolve: qutraj_evolve.f90 qutraj_precision.o qutraj_general.o qutraj_hilbert.o linked_list.o mt19937.o zvode/zvode.o
 qutraj_hilbert: qutraj_hilbert.f90 qutraj_precision.o qutraj_general.o
 qutraj_general: qutraj_general.f90 qutraj_precision.o
 linked_list: linked_list.f90 qutraj_precision.o

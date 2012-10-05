@@ -33,6 +33,7 @@ def configuration(parent_package='',top_path=None):
                              'linked_list.f90',
                              'qutraj_general.f90',
                              'qutraj_hilbert.f90',
+                             'qutraj_evolve.f90',
                              'qutraj_run.f90',
                              ],
                          extra_compile_args=[
