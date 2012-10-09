@@ -43,7 +43,6 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
         Object storing all results from simulation.
 
     """
-    from multiprocessing import cpu_count
     if psi0.type!='ket':
         raise Exception("Initial state must be a state vector.")
     odeconfig.options = options
@@ -199,7 +198,6 @@ class _MC_class():
         return sols
 
     def serial(self):
-        from random import randint
         self.nprocs = 1
         self.ntrajs = [self.ntraj]
         print "Running in serial."
@@ -248,15 +246,16 @@ class _MC_class():
         qtf90.qutraj_run.unravel_type = self.unravel_type
         qtf90.qutraj_run.mc_avg = odeconfig.options.mc_avg
         qtf90.qutraj_run.init_odedata(odeconfig.psi0_shape[0],
-                odeconfig.options.atol,odeconfig.options.rtol,mf=self.mf)
+                odeconfig.options.atol,odeconfig.options.rtol,mf=self.mf,
+                norm_steps=odeconfig.norm_steps,norm_tol=odeconfig.norm_tol)
         # set optional arguments
         qtf90.qutraj_run.order = odeconfig.options.order
         qtf90.qutraj_run.nsteps = odeconfig.options.nsteps
         qtf90.qutraj_run.first_step = odeconfig.options.first_step
         qtf90.qutraj_run.min_step = odeconfig.options.min_step
         qtf90.qutraj_run.max_step = odeconfig.options.max_step
-        qtf90.qutraj_run.norm_steps=odeconfig.options.norm_steps
-        qtf90.qutraj_run.norm_tol=odeconfig.options.norm_tol
+        #qtf90.qutraj_run.norm_steps=odeconfig.options.norm_steps
+        #qtf90.qutraj_run.norm_tol=odeconfig.options.norm_tol
         # use sparse density matrices during computation?
         qtf90.qutraj_run.rho_return_sparse = self.sparse_dms
         # run
@@ -269,7 +268,7 @@ class _MC_class():
         if (odeconfig.e_num==0):
             sol.states = self.get_states(size(odeconfig.tlist),ntraj)
         else:
-            sol.expect = self.get_expect(size(odeconfig.tlist))
+            sol.expect = self.get_expect(size(odeconfig.tlist),ntraj)
         if (not self.serial_run):
             # put to queue
             queue.put(sol)
@@ -333,7 +332,8 @@ class _MC_class():
                             qtf90.qutraj_run.sol[0,traj,i,:]).transpose(),
                             dims=self.psi0_dims,shape=self.psi0_shape)
         return states
-    def get_expect(self,nstep):
+
+    def get_expect(self,nstep,ntraj):
         if (odeconfig.options.mc_avg):
             expect=np.array([np.array([0.+0.j]*nstep)]*odeconfig.e_num)
             for j in range(odeconfig.e_num):
@@ -344,6 +344,7 @@ class _MC_class():
             for j in range(odeconfig.e_num):
                 expect[:,j,:] = qtf90.qutraj_run.sol[j,:,:,0]
         return expect
+
     def finalize():
         # not in use...
         qtf90.qutraj_run.finalize_work()

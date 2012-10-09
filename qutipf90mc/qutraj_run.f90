@@ -1,8 +1,6 @@
 !
 ! TODO:
 !
-! Write special routine for no collapse ops
-!
 
 module qutraj_run
   !
@@ -12,39 +10,11 @@ module qutraj_run
   use qutraj_precision
   use qutraj_general
   use qutraj_hilbert
+  use qutraj_evolve
   use mt19937
   use linked_list
 
   implicit none
-
-  !
-  ! Types
-  !
-
-  type odeoptions
-    ! No. of ODES
-    integer :: neq=1
-    ! work array zwork should have length 15*neq for non-stiff
-    integer :: lzw = 0
-    double complex, allocatable :: zwork(:)
-    ! work array rwork should have length 20+neq for non-siff
-    integer :: lrw = 0
-    double precision, allocatable :: rwork(:)
-    ! work array iwork should have length 30 for non-stiff
-    integer :: liw = 0
-    integer, allocatable :: iwork(:)
-    ! method flag mf should be 10 for non-stiff
-    integer :: mf = 10
-    ! arbitrary real/complex and int array for user def input to rhs
-    double complex :: rpar(1)
-    integer :: ipar(1)
-    ! abs. tolerance, rel. tolerance 
-    double precision, allocatable :: atol(:), rtol(:)
-    ! iopt=number of optional inputs, itol=1 for atol scalar, 2 otherwise
-    integer :: iopt, itol
-    ! task and state of solver
-    integer :: itask, istate
-  end type
 
   !
   ! Data defining the problem
@@ -53,16 +23,16 @@ module qutraj_run
   ! (because f2py can't handle derived types)
   !
 
-  type(operat) :: hamilt
-  type(operat), allocatable :: c_ops(:), e_ops(:)
-  type(odeoptions) :: ode
+  !type(operat) :: hamilt
+  !type(operat), allocatable :: c_ops(:), e_ops(:)
+  !type(odeoptions) :: ode
 
   real(wp), allocatable :: tlist(:)
   complex(wp), allocatable :: psi0(:)
 
   integer :: ntraj=1
-  integer :: norm_steps = 5
-  real(wp) :: norm_tol = 0.001
+  !integer :: norm_steps = 5
+  !real(wp) :: norm_tol = 0.001
   integer :: n_c_ops = 0
   integer :: n_e_ops = 0
   logical :: mc_avg = .true.
@@ -137,7 +107,7 @@ module qutraj_run
 
   subroutine init_hamiltonian(val,col,ptr,m,k,nnz,nptr)
     ! Hamiltonian is assumed to be given as
-    ! -i*(H-0.5 sum c_ops(i)^* c_ops(i))
+    ! -i*(H - i/2 sum c_ops(i)^* c_ops(i))
     use qutraj_precision
     integer, intent(in) :: nnz,nptr,m,k
     complex(wp), intent(in)  :: val(nnz)
@@ -185,13 +155,14 @@ module qutraj_run
     call new(e_ops(i),val,col,ptr,m,k)
   end subroutine
 
-  subroutine init_odedata(neq,atol,rtol,mf,&
+  subroutine init_odedata(neq,atol,rtol,mf,norm_steps,norm_tol,&
       lzw,lrw,liw,ml,mu,natol,nrtol)
     use qutraj_precision
     integer, intent(in) :: neq
-    integer, intent(in), optional :: lzw,lrw,liw,mf
+    integer, intent(in), optional :: lzw,lrw,liw,mf,norm_steps
     integer, intent(in) :: natol,nrtol
     double precision, optional :: atol(1),rtol(1)
+    real(wp), optional :: norm_tol
     integer, intent(in), optional :: ml,mu
     integer :: istat
 
@@ -247,8 +218,10 @@ module qutraj_run
     else
       ode%itol=2
     endif
-
     ode%iopt = 0
+
+    if (norm_steps.ne.0) ode%norm_steps = norm_steps
+    if (norm_tol.ne.0.) ode%norm_tol = norm_tol
   end subroutine
 
   subroutine get_rho_sparse(i)
@@ -417,10 +390,10 @@ module qutraj_run
         endif
         select case(unravel_type)
         case(1)
-          call evolve_nocollapse(t,tout,y,y_tmp)
+          call evolve_nocollapse(t,tout,y,y_tmp,ode)
         case(2)
           call evolve_jump(t,tout,y,y_tmp,p,mu,nu,&
-            ll_col_times(traj),ll_col_which(traj))
+            ll_col_times(traj),ll_col_which(traj),ode)
         case default
           call fatal_error('Unknown unravel type.')
         end select
@@ -572,159 +545,5 @@ module qutraj_run
       i = i+1
     enddo
   end subroutine
-
-
-  !
-  ! Stuff not visible to python
-  !
-
-  !
-  ! Evolution subs
-  !
-  subroutine evolve_nocollapse(t,tout,y,y_tmp)
-    double complex, intent(inout) :: y(:),y_tmp(:)
-    double precision, intent(inout) :: t, tout
-
-    ! integrate up to tout without overshooting
-    ode%rwork(1) = tout
-
-    call nojump(y,t,tout,ode%itask,ode)
-    if (ode%istate.lt.0) then
-      write(*,*) "zvode error: istate=",ode%istate
-      !stop
-    endif
-  end subroutine
-
-  subroutine evolve_jump(t,tout,y,y_tmp,p,mu,nu,ll_col_times,ll_col_which)
-    !
-    ! Evolve quantum trajectory y(t) to y(tout) using ``jump'' method
-    !
-    ! Input: t, tout, y
-    ! Work arrays: y_tmp, p
-    ! mu, nu: two random numbers
-    !
-    double complex, intent(inout) :: y(:),y_tmp(:)
-    double precision, intent(inout) :: t, tout
-    real(wp), intent(inout) :: p(:)
-    real(wp), intent(inout) :: mu,nu
-    type(linkedlist_real), intent(inout) :: ll_col_times
-    type(linkedlist_int), intent(inout) :: ll_col_which
-    double precision :: t_prev, t_final, t_guess
-    integer :: j,k
-    integer :: cnt
-    real(wp) :: norm2_psi,norm2_prev,norm2_guess,sump
-    logical, save :: first = .true.
-
-    ode%rwork(1) = tout
-    norm2_psi = abs(braket(y,y))
-    do while(t<tout)
-      t_prev = t
-      y_tmp = y
-      norm2_prev = norm2_psi
-      call nojump(y,t,tout,ode%itask,ode)
-      if (ode%istate.lt.0) then
-        write(*,*) "zvode error: istate=",ode%istate
-        !stop
-      endif
-      ! prob of nojump
-      norm2_psi = abs(braket(y,y))
-      if (norm2_psi.le.mu) then
-        ! jump happened
-        ! find collapse time to specified tolerance
-        t_final = t
-        cnt=1
-        do k=1,norm_steps
-          !t_guess=t_prev+(mu-norm2_prev)&
-          !  /(norm2_psi-norm2_prev)*(t_final-t_prev)
-          t_guess=t_prev+log(norm2_prev/mu)&
-            /log(norm2_prev/norm2_psi)*(t_final-t_prev)
-          if (t_guess<t_prev .or. t_guess>t_final) then
-            t_guess = t_prev+0.5*(t_final-t_prev)
-          endif
-          y = y_tmp
-          t = t_prev
-          call nojump(y,t,t_guess,1,ode)
-          if (ode%istate.lt.0) then
-            write(*,*) "zvode failed after adjusting step size. istate=",ode%istate
-            !stop
-          endif
-          norm2_guess = abs(braket(y,y))
-          if (abs(mu-norm2_guess) < norm_tol*mu) then
-              exit
-          elseif (norm2_guess < mu) then
-              ! t_guess is still > t_jump
-              t_final=t_guess
-              norm2_psi=norm2_guess
-          else
-              ! t_guess < t_jump
-              t_prev=t_guess
-              y_tmp=y
-              norm2_prev=norm2_guess
-          endif
-          cnt = cnt+1
-        enddo
-        if (cnt > norm_steps) then
-          call error("Norm tolerance not reached. Increase accuracy of ODE solver or norm_steps.")
-        endif
-        ! determine which jump
-        do j=1,n_c_ops
-          y_tmp = c_ops(j)*y
-          p(j) = abs(braket(y_tmp,y_tmp))
-        enddo
-        p = p/sum(p)
-        sump = 0
-        do j=1,n_c_ops
-          if ((sump <= nu) .and. (nu < sump+p(j))) then
-            y = c_ops(j)*y
-            ! Append collapse time and operator # to linked lists
-            call append(ll_col_times,t)
-            call append(ll_col_which,j)
-          endif
-          sump = sump+p(j)
-        enddo
-        ! new random numbers
-        mu = grnd()
-        nu = grnd()
-        ! normalize y
-        call normalize(y)
-        ! reset, first call to zvode
-        ode%istate = 1
-      endif
-    enddo
-  end subroutine
-
-  subroutine nojump(y,t,tout,itask,ode)
-    ! evolve with effective hamiltonian
-    type(odeoptions), intent(in) :: ode
-    double complex, intent(inout) :: y(:)
-    double precision, intent(inout) :: t
-    double precision, intent(in) :: tout
-    integer, intent(in) :: itask
-    integer :: istat
-
-    call zvode(rhs,ode%neq,y,t,tout,ode%itol,ode%rtol,ode%atol,&
-      itask,ode%istate,ode%iopt,ode%zwork,ode%lzw,ode%rwork,ode%lrw,&
-      ode%iwork,ode%liw,dummy_jac,ode%mf,ode%rpar,ode%ipar)
-  end subroutine
-
-  !
-  ! RHS for zvode
-  !
-
-  subroutine rhs (neq, t, y, ydot, rpar, ipar)
-    ! evolve with effective hamiltonian
-    complex(wp) :: y(neq), ydot(neq),rpar
-    real(wp) :: t
-    integer :: ipar,neq
-    ydot = (hamilt*y)
-  end subroutine
-
-  subroutine dummy_jac (neq, t, y, ml, mu, pd, nrpd, rpar, ipar)
-    ! dummy jacobian for zvode
-    complex(wp) :: y(neq), pd(nrpd,neq), rpar
-    real(wp) :: t
-    integer :: neq,ml,mu,nrpd,ipar
-    return
-  end
 
 end module
