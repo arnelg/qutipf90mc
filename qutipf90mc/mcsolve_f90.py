@@ -227,7 +227,7 @@ class _MC_class():
             # run in paralell
             sols = self.parallel()
         # gather data
-        self.sol = _gather(sols,self.ntrajs)
+        self.sol = _gather(sols)
 
     def evolve_serial(self,args):
         # run ntraj trajectories for one process via fortran
@@ -262,6 +262,7 @@ class _MC_class():
         qtf90.qutraj_run.evolve(odeconfig.e_num==0,instanceno,rngseed)
         # construct Odedata instance
         sol = Odedata()
+        sol.ntraj = ntraj
         #sol.col_times = qtf90.qutraj_run.col_times
         #sol.col_which = qtf90.qutraj_run.col_which-1
         sol.col_times, sol.col_which = self.get_collapses(ntraj)
@@ -350,24 +351,23 @@ class _MC_class():
         qtf90.qutraj_run.finalize_work()
         qtf90.qutraj_run.finalize_sol()
 
-def _gather(sols,ntrajs):
+def _gather(sols):
     # gather list of Odedata objects, sols, into one.
-    # ntrajs is a list of number of trajectories for each
-    # element in sols.
     sol = Odedata()
     #sol = sols[0]
-    sol.col_times = np.zeros((sum(ntrajs)),dtype=np.ndarray)
-    sol.col_which = np.zeros((sum(ntrajs)),dtype=np.ndarray)
-    sol.col_times[0:ntrajs[0]] = sols[0].col_times
-    sol.col_which[0:ntrajs[0]] = sols[0].col_which
+    ntraj = sum([a.ntraj for a in sols])
+    sol.col_times = np.zeros((ntraj),dtype=np.ndarray)
+    sol.col_which = np.zeros((ntraj),dtype=np.ndarray)
+    sol.col_times[0:sols[0].ntraj] = sols[0].col_times
+    sol.col_which[0:sols[0].ntraj] = sols[0].col_which
     sol.states = np.array(sols[0].states)
     sol.expect = np.array(sols[0].expect)
     sofar = 0
     for j in range(1,len(sols)):
-        sofar = sofar + ntrajs[j-1]
-        sol.col_times[sofar:sofar+ntrajs[j]] = (
+        sofar = sofar + sols[j-1].ntraj
+        sol.col_times[sofar:sofar+sols[j].ntraj] = (
                 sols[j].col_times)
-        sol.col_which[sofar:sofar+ntrajs[j]] = (
+        sol.col_which[sofar:sofar+sols[j].ntraj] = (
                 sols[j].col_which)
         if (odeconfig.e_num==0):
             if (odeoptions.options.mc_avg):

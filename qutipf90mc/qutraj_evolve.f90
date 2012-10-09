@@ -209,89 +209,89 @@ module qutraj_evolve
   ! Diffusive unravelling evolution
   !
 
-  subroutine evolve_platen(psi,delta_t)
-    ! TODO: Clean up use of temporary state vectors
-    ! Diffusive solution, Platen scheme
-    ! Evolve for a small time step delta_t
-    ! State, inout, normalized
-    complex(wp), intent(inout) :: psi(:)
-    real(wp), intent(in) :: delta_t
-    real(wp) :: p1,p2,pnj,dw
-    integer :: i,j
-    complex(wp), allocatable :: psi_n,dpsi1,dpsi2
-    complex(wp), allocatable :: psi_tilde,psi_plus,psi_min
+  !subroutine evolve_platen(psi,delta_t)
+  !  ! TODO: Clean up use of temporary state vectors
+  !  ! Diffusive solution, Platen scheme
+  !  ! Evolve for a small time step delta_t
+  !  ! State, inout, normalized
+  !  complex(wp), intent(inout) :: psi(:)
+  !  real(wp), intent(in) :: delta_t
+  !  real(wp) :: p1,p2,pnj,dw
+  !  integer :: i,j
+  !  complex(wp), allocatable :: psi_n,dpsi1,dpsi2
+  !  complex(wp), allocatable :: psi_tilde,psi_plus,psi_min
 
-    call new(psi_n,size(psi))
-    call new(dpsi1,size(psi))
-    call new(dpsi2,size(psi))
-    call new(psi_tilde,size(psi))
-    call new(psi_plus,size(psi))
-    call new(psi_min,size(psi))
+  !  call new(psi_n,size(psi))
+  !  call new(dpsi1,size(psi))
+  !  call new(dpsi2,size(psi))
+  !  call new(psi_tilde,size(psi))
+  !  call new(psi_plus,size(psi))
+  !  call new(psi_min,size(psi))
 
-    psi_n = psi
+  !  psi_n = psi
 
-    ! Hamiltonian term
-    !call hamiltonian(hamiltonian_id,psi,dpsi1)
-    dpsi1 = -ii*(hamilt*psi)
-    psi_tilde = psi + delta_t*dpsi1
-    psi_n = psi_n + 0.5*delta_t*dpsi1
-    !call hamiltonian(hamiltonian_id,psi_tilde,dpsi1)
-    dpsi1 = (-ii)*(hamilt*psi_tilde)
-    psi_n = psi_n + 0.5*delta_t*dpsi1
+  !  ! Hamiltonian term
+  !  !call hamiltonian(hamiltonian_id,psi,dpsi1)
+  !  dpsi1 = -ii*(hamilt*psi)
+  !  psi_tilde = psi + delta_t*dpsi1
+  !  psi_n = psi_n + 0.5*delta_t*dpsi1
+  !  !call hamiltonian(hamiltonian_id,psi_tilde,dpsi1)
+  !  dpsi1 = (-ii)*(hamilt*psi_tilde)
+  !  psi_n = psi_n + 0.5*delta_t*dpsi1
 
-    do j=1,n_c_ops
-      call schrod_d1_bp(j,psi,dpsi1)
-      call schrod_d2_bp(j,psi,dpsi2)
+  !  do j=1,n_c_ops
+  !    call schrod_d1_bp(j,psi,dpsi1)
+  !    call schrod_d2_bp(j,psi,dpsi2)
 
-      dw = sqrt(delta_t)*gaussran(rngseed,rngseed)
-      psi_tilde = psi + delta_t*dpsi1 + dw*dpsi2
-      psi_plus = psi + delta_t*dpsi1 + sqrt(delta_t)*dpsi2
-      psi_min = psi + delta_t*dpsi1 - sqrt(delta_t)*dpsi2
+  !    dw = sqrt(delta_t)*gaussran(rngseed,rngseed)
+  !    psi_tilde = psi + delta_t*dpsi1 + dw*dpsi2
+  !    psi_plus = psi + delta_t*dpsi1 + sqrt(delta_t)*dpsi2
+  !    psi_min = psi + delta_t*dpsi1 - sqrt(delta_t)*dpsi2
 
-      psi_n = psi_n + delta_t/2.0*dpsi1
-      psi_n = psi_n + dw/2.0*dpsi2
+  !    psi_n = psi_n + delta_t/2.0*dpsi1
+  !    psi_n = psi_n + dw/2.0*dpsi2
 
-      call schrod_d1_bp(j,psi_tilde,dpsi1)
-      psi_n = psi_n + 0.5*delta_t*dpsi1
-      call schrod_d2_bp(j,psi_plus,dpsi2)
-      psi_n = psi_n + (dw + (dw*dw-delta_t)/sqrt(delta_t))/4.0*dpsi2
-      call schrod_d2_bp(j,psi_min,dpsi2)
-      psi_n = psi_n + (dw - (dw*dw-delta_t)/sqrt(delta_t))/4.0*dpsi2
-    enddo
-    call normalize(psi_n)
-    psi = psi_n
-  end subroutine
+  !    call schrod_d1_bp(j,psi_tilde,dpsi1)
+  !    psi_n = psi_n + 0.5*delta_t*dpsi1
+  !    call schrod_d2_bp(j,psi_plus,dpsi2)
+  !    psi_n = psi_n + (dw + (dw*dw-delta_t)/sqrt(delta_t))/4.0*dpsi2
+  !    call schrod_d2_bp(j,psi_min,dpsi2)
+  !    psi_n = psi_n + (dw - (dw*dw-delta_t)/sqrt(delta_t))/4.0*dpsi2
+  !  enddo
+  !  call normalize(psi_n)
+  !  psi = psi_n
+  !end subroutine
 
-  subroutine d1_bp(i,psi,dpsi)
-    ! D1 term from Breuer & Pettruccione
-    ! Return D1 |Psi(t)> in dpsi, for jump-operator c_ops(i)
-    ! B&P p. 331 eq (6.181)
-    complex(wp), intent(in) :: psi(:)
-    complex(wp), intent(out) :: dpsi(:)
-    !complex(wp), allocatable :: psi_tmp(:)
-    integer, intent(in) :: i
-    complex(wp) :: tmp1, tmp2
-    !call new(psi_tmp,size(psi))
-    tmp1 = braket(psi,c_ops(i)*psi)
-    tmp2 = braket(psi,c_ops(i)*psi)
-    dpsi = 0.5_wp*(tmp1+tmp2)*(c_ops(i)*psi)
-    dpsi = dpsi-(0.5_wp)*(c_ops_hc(i)*(c_ops(i)*psi))
-    dpsi = dpsi-(0.125_wp*(tmp1+tmp2)*(tmp1+tmp2))*psi
-  end subroutine
+  !subroutine d1_bp(i,psi,dpsi)
+  !  ! D1 term from Breuer & Pettruccione
+  !  ! Return D1 |Psi(t)> in dpsi, for jump-operator c_ops(i)
+  !  ! B&P p. 331 eq (6.181)
+  !  complex(wp), intent(in) :: psi(:)
+  !  complex(wp), intent(out) :: dpsi(:)
+  !  !complex(wp), allocatable :: psi_tmp(:)
+  !  integer, intent(in) :: i
+  !  complex(wp) :: tmp1, tmp2
+  !  !call new(psi_tmp,size(psi))
+  !  tmp1 = braket(psi,c_ops(i)*psi)
+  !  tmp2 = braket(psi,c_ops(i)*psi)
+  !  dpsi = 0.5_wp*(tmp1+tmp2)*(c_ops(i)*psi)
+  !  dpsi = dpsi-(0.5_wp)*(c_ops_hc(i)*(c_ops(i)*psi))
+  !  dpsi = dpsi-(0.125_wp*(tmp1+tmp2)*(tmp1+tmp2))*psi
+  !end subroutine
 
-  subroutine d2_bp(i,psi,dpsi)
-    ! D2 term from Breuer & Pettruccione
-    ! Return D2 |Psi(t)> in dpsi, for jump-operator c_ops(i)
-    ! B&P p. 331 eq (6.181)
-    complex(wp), intent(in) :: psi(:)
-    complex(wp), intent(out) :: dpsi(:)
-    integer, intent(in) :: i
-    complex(wp) :: tmp1, tmp2
-    tmp1 = braket(psi,c_ops(i)*psi)
-    tmp2 = braket(psi,c_ops_hc(i)*psi)
-    dpsi = c_ops(i)*psi
-    dpsi = dpsi - (0.5_wp*(tmp1+tmp2))*psi
-  end subroutine
+  !subroutine d2_bp(i,psi,dpsi)
+  !  ! D2 term from Breuer & Pettruccione
+  !  ! Return D2 |Psi(t)> in dpsi, for jump-operator c_ops(i)
+  !  ! B&P p. 331 eq (6.181)
+  !  complex(wp), intent(in) :: psi(:)
+  !  complex(wp), intent(out) :: dpsi(:)
+  !  integer, intent(in) :: i
+  !  complex(wp) :: tmp1, tmp2
+  !  tmp1 = braket(psi,c_ops(i)*psi)
+  !  tmp2 = braket(psi,c_ops_hc(i)*psi)
+  !  dpsi = c_ops(i)*psi
+  !  dpsi = dpsi - (0.5_wp*(tmp1+tmp2))*psi
+  !end subroutine
 
 end module
 
