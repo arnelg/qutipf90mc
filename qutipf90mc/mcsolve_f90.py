@@ -370,7 +370,7 @@ def _gather(sols):
         sol.col_which[sofar:sofar+sols[j].ntraj] = (
                 sols[j].col_which)
         if (odeconfig.e_num==0):
-            if (odeoptions.options.mc_avg):
+            if (odeconfig.options.mc_avg):
                 # collect states, averaged over trajectories
                 sol.states += np.array(sols[j].states)
             else:
@@ -454,7 +454,7 @@ def _init_e_ops():
 #
 
 def _realarray_to_fortran(a):
-    datad = np.asfortranarray(np.array(a,dtype=wpr))
+    datad = np.array(a,dtype=wpr)
     return datad
 
 def _complexarray_to_fortran(a):

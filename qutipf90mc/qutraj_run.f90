@@ -102,7 +102,11 @@ module qutraj_run
     use qutraj_precision
     complex(wp), intent(in) :: val(n)
     integer, intent(in) :: n
+    complex(wp) :: rho(2,2)
     call new(psi0,val)
+    call ptrace_pure(psi0,rho,(/1/),(/2,2/))
+    !write(*,"(F4.2)") rho
+    write(*,*) rho
   end subroutine
 
   subroutine init_hamiltonian(val,col,ptr,m,k,nnz,nptr)
