@@ -2,7 +2,7 @@ TARGET = qutraj_run
 
 F90 = gfortran
 F90FLAGS =
-LDFLAGS = -lblas
+LDFLAGS = -lblas -llapack
 F77 = gfortran
 F77FLAGS =
 

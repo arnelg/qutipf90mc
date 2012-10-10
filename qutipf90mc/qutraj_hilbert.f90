@@ -388,10 +388,11 @@ module qutraj_hilbert
   end function
 
   !
-  ! Density matrix from pure state
+  ! Misc.
   !
 
   subroutine densitymatrix_dense(psi,rho)
+    ! Dense density matrix from pure state
     complex(wp), intent(in) :: psi(:)
     complex(wp), intent(out) :: rho(:,:)
     complex(wp), allocatable :: tmp(:,:)
@@ -402,18 +403,18 @@ module qutraj_hilbert
   end subroutine
 
   subroutine densitymatrix_sparse(psi,rho)
+    ! Sparse density matrix from pure state
     complex(wp), intent(in) :: psi(:)
     type(operat), intent(out) :: rho
     type(operat) :: a,b
     rho = ket_to_operat(psi)*bra_to_operat(conjg(psi))
   end subroutine
 
-  !
-  ! Partial trace over pure state
-  !
-
   subroutine ptrace_pure(psi,rho,sel,dims)
+    ! Partial trace over pure state
     ! Under construction
+    ! Currently only correct for sel = (/1,2,../)
+    ! i.e. no permutations
     complex(wp), intent(in) :: psi(:)
     integer, intent(in) :: sel(:),dims(:)
     complex(wp), intent(out) :: rho(:,:)
@@ -445,6 +446,42 @@ module qutraj_hilbert
     !allocate(rho(prod_dims_sel,prod_dims_sel),stat=istat)
     rho = matmul(transpose(conjg(a)),a)
   end subroutine
+
+  subroutine eigenvalues(rho,eig,n)
+    ! Eigenvalues of dense hermitian matrix rho
+    complex(wp), intent(in) :: rho(:,:)
+    integer, intent(in) :: n
+    real(wp), intent(out) :: eig(n)
+    double complex :: ap(n*(n+1)/2), z(1,1),work(2*n-1)
+    double precision :: eig_dp(n),rwork(3*n-2)
+    integer info,i,j
+    do i=1,n
+      do j=i,n
+        ap(i+(j-1)*j/2) = rho(i,j)
+      enddo
+    enddo
+    call zhpev('N','U',n,ap,eig_dp,z,1,work,rwork,info)
+    eig = eig_dp
+  end subroutine
+
+  subroutine entropy(rho,S)
+    ! Calculate entropy for dense density matrix
+    complex(wp), intent(in) :: rho(:,:)
+    real(wp), intent(out) :: S
+    real(wp), dimension(2) :: eig_r
+    integer :: i
+    call eigenvalues(rho,eig_r,size(rho,1))
+    S = 0
+    do i=1,size(eig_r)
+      ! Rule: 0 log(0) = 0
+      if (eig_r(i) < -epsi) &
+        write(*,*) "entropy: negative eigenvalue!", eig_r(i)
+      if (abs(eig_r(i)) > epsi) then
+        S = S -eig_r(i)*log(eig_r(i))/log(2.)
+      endif
+    enddo
+  end subroutine
+
 
   !
   ! Sparse matrix routines

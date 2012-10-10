@@ -77,6 +77,10 @@ module qutraj_run
   ! diffusive unravellings to be implemented
   integer :: unravel_type = 2
 
+  ! Stuff needed for partial trace
+  integer, allocatable :: psi0_dims1(:),ptrace_sel(:)
+  integer :: rho_reduced_dim=0
+
   !
   ! Interfaces
   !
@@ -102,11 +106,23 @@ module qutraj_run
     use qutraj_precision
     complex(wp), intent(in) :: val(n)
     integer, intent(in) :: n
-    complex(wp) :: rho(2,2)
+    !complex(wp), allocatable :: rho(:,:)
     call new(psi0,val)
-    call ptrace_pure(psi0,rho,(/1/),(/2,2/))
+    ! By default assume no partial trace is to be taken
+    !call new(ptrace_sel,(/0/))
+    !if (allocated(rho)) deallocate(rho)
+    !allocate(rho(rho_reduced_dims(1),rho_reduced_dims(2)))
+    !call ptrace_pure(psi0,rho,ptrace_sel,psi0_dims1)
     !write(*,"(F4.2)") rho
-    write(*,*) rho
+    !write(*,*) rho
+  end subroutine
+
+  subroutine init_ptrace_stuff(dims,sel,reduced_dim,ndims,nsel)
+    integer, intent(in) :: dims(ndims),sel(nsel),reduced_dim
+    integer, intent(in) :: ndims, nsel
+    call new(psi0_dims1,dims)
+    call new(ptrace_sel,sel)
+    rho_reduced_dim = reduced_dim
   end subroutine
 
   subroutine init_hamiltonian(val,col,ptr,m,k,nnz,nptr)
@@ -303,8 +319,16 @@ module qutraj_run
           call new(sol_rho,size(tlist))
           call new(rho_sparse,1,1)
         else
-          allocate(sol(1,size(tlist),ode%neq,ode%neq),stat=istat)
-          allocate(rho(ode%neq,ode%neq),stat=istat2)
+          if (rho_reduced_dim == 0) then
+            ! Not doing partial trace
+            allocate(sol(1,size(tlist),ode%neq,ode%neq),stat=istat)
+            allocate(rho(ode%neq,ode%neq),stat=istat2)
+          else
+            ! Doing partial trace
+            allocate(sol(1,size(tlist),&
+              rho_reduced_dim,rho_reduced_dim),stat=istat)
+            allocate(rho(rho_reduced_dim,rho_reduced_dim),stat=istat2)
+          endif
           sol = (0.,0.)
           rho = (0.,0.)
         endif
@@ -415,7 +439,11 @@ module qutraj_run
                 sol_rho(i) = sol_rho(i) + rho_sparse
               endif
             else
-              call densitymatrix_dense(y_tmp,rho)
+              if (rho_reduced_dim == 0) then
+                call densitymatrix_dense(y_tmp,rho)
+              else
+                call ptrace_pure(y_tmp,rho,ptrace_sel,psi0_dims1)
+              endif
               sol(1,i,:,:) = sol(1,i,:,:) + rho
             endif
           else

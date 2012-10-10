@@ -10,7 +10,8 @@ wpr = dtype(float64)
 wpc = dtype(complex128)
 
 def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
-        options=Odeoptions(),sparse_dms=True,serial=False):
+        options=Odeoptions(),sparse_dms=True,serial=False,
+        ptrace_sel=[]):
     """
     Monte-Carlo wave function solver with fortran 90 backend.
     Usage is identical to qutip.mcsolve, for problems without explicit
@@ -95,7 +96,7 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
     elif (options.method == 'bdf'):
         mc.mf = 22
     else:
-        print 'unrecognized method for ode solver, using "adams".'
+        print 'Unrecognized method for ode solver, using "adams".'
         mc.mf = 10
     # store ket and density matrix dims and shape for convenience
     mc.psi0_dims = psi0.dims
@@ -106,6 +107,15 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
     mc.sparse_dms = sparse_dms
     # run in serial?
     mc.serial_run = serial
+    # are we doing a partial trace for returned states?
+    mc.ptrace_sel = ptrace_sel
+    if (ptrace_sel != []):
+        print 'ptrace_sel set to',ptrace_sel
+        print 'ps. We are using dense density matrices during computation when performing partial trace. Setting sparse_dms = False'
+        print 'This feature is experimental.'
+        mc.sparse_dms = False
+        mc.dm_dims = psi0.ptrace(ptrace_sel).dims
+        mc.dm_shape = psi0.ptrace(ptrace_sel).shape
 
     # construct output Odedata object
     output = Odedata()
@@ -144,6 +154,7 @@ class _MC_class():
         self.dm_dims = None
         self.dm_shape = None
         self.unravel_type = 2
+        self.ptrace_sel = []
 
     def parallel(self):
         from multiprocessing import Process, Queue, JoinableQueue
@@ -235,6 +246,8 @@ class _MC_class():
         queue,ntraj,instanceno,rngseed = args
         # initialize the problem in fortran
         _init_tlist()
+        if (self.ptrace_sel != []):
+            _init_ptrace_stuff(self.ptrace_sel)
         _init_psi0()
         _init_hamilt()
         if (odeconfig.c_num != 0):
@@ -409,6 +422,12 @@ def _init_psi0():
     #Of = _qobj_to_fortranfull(odeconfig.psi0)
     Of = _complexarray_to_fortran(odeconfig.psi0)
     qtf90.qutraj_run.init_psi0(Of,size(Of))
+
+def _init_ptrace_stuff(sel):
+    psi0 = Qobj(odeconfig.psi0,
+            dims=odeconfig.psi0_dims,shape=odeconfig.psi0_shape)
+    qtf90.qutraj_run.init_ptrace_stuff(odeconfig.psi0_dims[0],
+            np.array(sel)+1,psi0.ptrace(sel).shape[0])
 
 def _init_hamilt():
     # construct effective non-Hermitian Hamiltonian

@@ -30,6 +30,9 @@ python module qutraj_run ! in
             integer :: csr_ncols
             real(kind=wp), allocatable,dimension(:) :: col_times
             integer, allocatable,dimension(:) :: col_which
+            integer, allocatable,dimension(:) :: psi0_dims1
+            integer, allocatable,dimension(:) :: ptrace_sel
+            integer :: rho_reduced_dim
             subroutine init_tlist(val,n) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 use qutraj_precision
                 real(kind=wp) dimension(n),intent(in) :: val
@@ -40,6 +43,13 @@ python module qutraj_run ! in
                 complex(kind=wp) dimension(n),intent(in) :: val
                 integer, optional,intent(in),check(len(val)>=n),depend(val) :: n=len(val)
             end subroutine init_psi0
+            subroutine init_ptrace_stuff(dims,sel,reduced_dim,ndims,nsel) ! in :qutraj_run:qutraj_run.f90:qutraj_run
+                integer dimension(ndims),intent(in) :: dims
+                integer dimension(nsel),intent(in) :: sel
+                integer,intent(in) :: reduced_dim
+                integer, optional,intent(in),check(len(dims)>=ndims),depend(dims) :: ndims=len(dims)
+                integer, optional,intent(in),check(len(sel)>=nsel),depend(sel) :: nsel=len(sel)
+            end subroutine init_ptrace_stuff
             subroutine init_hamiltonian(val,col,ptr,m,k,nnz,nptr) ! in :qutraj_run:qutraj_run.f90:qutraj_run
                 use qutraj_precision
                 complex(kind=wp) dimension(nnz),intent(in) :: val
