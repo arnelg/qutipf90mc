@@ -14,6 +14,13 @@ Missing features:
 - Does not accept list as "ntraj" argument.
 - Only solves prolbems without explicit time-dependence.
 
+
+Dependencies:
+
+- QuTiP v.2.1.0 or higher and all its dependencies.
+- A fortran compiler and the BLAS library (BLAS comes with many fortran compilers, such as gfortran).
+
+
 Installation:
 
 1. Download code with
@@ -26,10 +33,21 @@ python setup.py install
 Or, if you prefer to install locally:
 python setup.py build_ext --inplace
 
-3. Test the installation by leaving the directory, starting python and entering
+
+Testing and usage:
+
+Test the installation by leaving the directory, starting python and entering
 import qutipf90mc
-qutipf90mc.testdemos()
+
+To run a few unit tests do:
+qutipf90mc.test()
+
+To run a few demos do:
+qutipf90mc.alldemos()
 
 This will run some demos from QuTiP where the call to qutip.mcsolve has been replaced by qutipf90mc.mcsolve_f90.
+
+For general usage see
+help(qutipf90mc.mcsolve_f90)
 
 You can also run qutipf90mc.compare.run(dim,ntraj) to compare the speed of mcsolve_f90 vs. mcsolve for a decaying system with Hilbert space dimension dim, and ntraj trajectories, run on a single CPU.

@@ -20,6 +20,12 @@ MODS += qutraj_general
 MODS += qutraj_hilbert
 MODS += qutraj_evolve
 
+# Compile linear algebra routines? Depends on LAPACK
+
+MODS += qutraj_linalg
+#MODS += qutraj_nolinalg
+
+
 OBJS = $(MODS:=.o)
 SRCS += $(MODS:=.f90)
 
@@ -73,8 +79,9 @@ clean:
 # Dependencies
 #
 
-qutraj_run: qutraj_run.f90 qutraj_precision.o qutraj_general.o qutraj_evolve.o linked_list.o mt19937.o
+qutraj_run: qutraj_run.f90 qutraj_precision.o qutraj_general.o qutraj_hilbert.o qutraj_linalg.o qutraj_evolve.o linked_list.o mt19937.o
 qutraj_evolve: qutraj_evolve.f90 qutraj_precision.o qutraj_general.o qutraj_hilbert.o linked_list.o mt19937.o zvode/zvode.o
+qutraj_linalg: qutraj_linalg.f90 qutraj_hilbert.o qutraj_precision.o qutraj_general.o
 qutraj_hilbert: qutraj_hilbert.f90 qutraj_precision.o qutraj_general.o
 qutraj_general: qutraj_general.f90 qutraj_precision.o
 linked_list: linked_list.f90 qutraj_precision.o

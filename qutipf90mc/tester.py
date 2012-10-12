@@ -13,19 +13,21 @@ def ptracetest():
     c1 = np.sqrt(gamma)*qt.sigmax()
     e1 = np.sqrt(gamma)*qt.sigmaz()
     c_ops = [qt.tensor(c1,c1)]
-    e_ops = []
+    e_ops = [qt.tensor(e1,e1),qt.tensor(c1,c1)]
+    #e_ops = []
     tlist = np.linspace(0,10,100)
-    ntraj = 1000
-    ptrace_sel = [0,1]
+    ntraj = 2000
+    ptrace_sel = [0]
     sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,
-            ptrace_sel=ptrace_sel)
-    sol_me = qt.mesolve(H,psi0,tlist,c_ops,e_ops)
+            ptrace_sel=ptrace_sel,calc_entropy=True)
+    #sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj)
+    #sol_me = qt.mesolve(H,psi0,tlist,c_ops,e_ops)
     #exp_f90 = qt.expect(e1,sol_f90.states)
     #exp_me = qt.expect(qt.tensor(e1,qt.qeye(neq)),sol_me.states)
     #plt.figure()
     #plt.plot(tlist,exp_me)
     #plt.plot(tlist,exp_f90)
-    return sol_f90,sol_me
+    #return sol_f90#,sol_me
 
 def test():
     gamma = 1.
@@ -107,6 +109,22 @@ def test():
     return sol_f90, sol_mc
 
 def rundemo(no,fig=False):
+    """ Run a demo adapted from qutip
+
+    Parameters
+    ----------
+    no : int
+        Demo number. Available demos are:
+        24 - Dynamics of a Heisenberg spin chain
+        30 - MC Cavity+Qubig
+        31 - Coupled Oscillators
+        33 - Trilinear Hamiltonian
+        34 - Visualize MC Dissipation
+    fig : boolean
+        Open a new pyplot.figure before running demo? Default is False.
+
+    See also qutipf90mc.alldemos.
+    """
     import qutipf90mc.examples as examples
     print 'running demo #',str(no),'from qutip'
     raw_input('press a key to continue')
@@ -115,7 +133,10 @@ def rundemo(no,fig=False):
     if (fig): plt.figure()
     eval(ex_code)
 
-def testdemos():
+def alldemos():
+    """
+    Run all available demos. See also qutipf90mc.rundemo.
+    """
     rundemo(24,fig=True)
     rundemo(30,fig=True)
     rundemo(31,fig=True)
@@ -123,4 +144,4 @@ def testdemos():
     rundemo(34)
 
 if __name__ == '__main__':
-    test()
+    ptracetest()
