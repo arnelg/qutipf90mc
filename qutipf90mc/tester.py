@@ -4,6 +4,30 @@ import qutip as qt
 import qutipf90mc as mcf90
 import time
 
+def ptracetest():
+    gamma = 1.
+    neq = 2
+    psi0 = qt.basis(neq,neq-1)
+    psi0 = qt.tensor(psi0,psi0)
+    H = qt.tensor(qt.sigmax(),qt.sigmay())
+    c1 = np.sqrt(gamma)*qt.sigmax()
+    e1 = np.sqrt(gamma)*qt.sigmaz()
+    c_ops = [qt.tensor(c1,c1)]
+    e_ops = [qt.tensor(e1,e1),qt.tensor(c1,c1)]
+    #e_ops = []
+    tlist = np.linspace(0,10,100)
+    ntraj = 2000
+    ptrace_sel = [0]
+    sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,
+            ptrace_sel=ptrace_sel,calc_entropy=True)
+    #sol_f90 = mcf90.mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj)
+    #sol_me = qt.mesolve(H,psi0,tlist,c_ops,e_ops)
+    #exp_f90 = qt.expect(e1,sol_f90.states)
+    #exp_me = qt.expect(qt.tensor(e1,qt.qeye(neq)),sol_me.states)
+    #plt.figure()
+    #plt.plot(tlist,exp_me)
+    #plt.plot(tlist,exp_f90)
+    #return sol_f90#,sol_me
 
 def test():
     gamma = 1.
@@ -85,6 +109,22 @@ def test():
     return sol_f90, sol_mc
 
 def rundemo(no,fig=False):
+    """ Run a demo adapted from qutip
+
+    Parameters
+    ----------
+    no : int
+        Demo number. Available demos are:
+        24 - Dynamics of a Heisenberg spin chain
+        30 - MC Cavity+Qubig
+        31 - Coupled Oscillators
+        33 - Trilinear Hamiltonian
+        34 - Visualize MC Dissipation
+    fig : boolean
+        Open a new pyplot.figure before running demo? Default is False.
+
+    See also qutipf90mc.alldemos.
+    """
     import qutipf90mc.examples as examples
     print 'running demo #',str(no),'from qutip'
     raw_input('press a key to continue')
@@ -93,7 +133,10 @@ def rundemo(no,fig=False):
     if (fig): plt.figure()
     eval(ex_code)
 
-def testdemos():
+def alldemos():
+    """
+    Run all available demos. See also qutipf90mc.rundemo.
+    """
     rundemo(24,fig=True)
     rundemo(30,fig=True)
     rundemo(31,fig=True)
@@ -101,4 +144,4 @@ def testdemos():
     rundemo(34)
 
 if __name__ == '__main__':
-    test()
+    ptracetest()

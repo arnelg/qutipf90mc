@@ -10,7 +10,8 @@ wpr = dtype(float64)
 wpc = dtype(complex128)
 
 def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
-        options=Odeoptions(),sparse_dms=True,serial=False):
+        options=Odeoptions(),sparse_dms=True,serial=False,
+        ptrace_sel=[],calc_entropy=False):
     """
     Monte-Carlo wave function solver with fortran 90 backend.
     Usage is identical to qutip.mcsolve, for problems without explicit
@@ -95,7 +96,7 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
     elif (options.method == 'bdf'):
         mc.mf = 22
     else:
-        print 'unrecognized method for ode solver, using "adams".'
+        print 'Unrecognized method for ode solver, using "adams".'
         mc.mf = 10
     # store ket and density matrix dims and shape for convenience
     mc.psi0_dims = psi0.dims
@@ -106,6 +107,20 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
     mc.sparse_dms = sparse_dms
     # run in serial?
     mc.serial_run = serial
+    # are we doing a partial trace for returned states?
+    mc.ptrace_sel = ptrace_sel
+    if (ptrace_sel != []):
+        print 'ptrace_sel set to',ptrace_sel
+        print 'ps. We are using dense density matrices during computation when performing partial trace. Setting sparse_dms = False'
+        print 'This feature is experimental.'
+        mc.sparse_dms = False
+        mc.dm_dims = psi0.ptrace(ptrace_sel).dims
+        mc.dm_shape = psi0.ptrace(ptrace_sel).shape
+    if (calc_entropy):
+        if (ptrace_sel == []):
+            print 'calc_entropy = True, but ptrace_sel = []. Please set a list of components to keep when calculating average entropy of reduced density matrix in ptrace_sel. Setting calc_entropy = False.'
+            calc_entropy = False
+        mc.calc_entropy = calc_entropy
 
     # construct output Odedata object
     output = Odedata()
@@ -116,6 +131,8 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
     output.expect = mc.sol.expect
     output.col_times=mc.sol.col_times
     output.col_which=mc.sol.col_which
+    if (hasattr(mc.sol,'entropy')):
+        output.entropy = mc.sol.entropy
 
     output.solver = 'Fortran 90 Monte Carlo solver'
     #simulation parameters
@@ -144,6 +161,8 @@ class _MC_class():
         self.dm_dims = None
         self.dm_shape = None
         self.unravel_type = 2
+        self.ptrace_sel = []
+        self.calc_entropy = False
 
     def parallel(self):
         from multiprocessing import Process, Queue, JoinableQueue
@@ -236,12 +255,16 @@ class _MC_class():
         # initialize the problem in fortran
         _init_tlist()
         _init_psi0()
+        if (self.ptrace_sel != []):
+            _init_ptrace_stuff(self.ptrace_sel)
         _init_hamilt()
         if (odeconfig.c_num != 0):
             _init_c_ops()
         if (odeconfig.e_num != 0):
             _init_e_ops()
         # set options
+        qtf90.qutraj_run.n_c_ops = odeconfig.c_num
+        qtf90.qutraj_run.n_e_ops = odeconfig.e_num
         qtf90.qutraj_run.ntraj = ntraj
         qtf90.qutraj_run.unravel_type = self.unravel_type
         qtf90.qutraj_run.mc_avg = odeconfig.options.mc_avg
@@ -254,12 +277,14 @@ class _MC_class():
         qtf90.qutraj_run.first_step = odeconfig.options.first_step
         qtf90.qutraj_run.min_step = odeconfig.options.min_step
         qtf90.qutraj_run.max_step = odeconfig.options.max_step
-        #qtf90.qutraj_run.norm_steps=odeconfig.options.norm_steps
-        #qtf90.qutraj_run.norm_tol=odeconfig.options.norm_tol
+        qtf90.qutraj_run.norm_steps=odeconfig.options.norm_steps
+        qtf90.qutraj_run.norm_tol=odeconfig.options.norm_tol
         # use sparse density matrices during computation?
         qtf90.qutraj_run.rho_return_sparse = self.sparse_dms
+        # calculate entropy of reduced density matrice?
+        qtf90.qutraj_run.calc_entropy = self.calc_entropy
         # run
-        qtf90.qutraj_run.evolve(odeconfig.e_num==0,instanceno,rngseed)
+        qtf90.qutraj_run.evolve(instanceno,rngseed)
         # construct Odedata instance
         sol = Odedata()
         sol.ntraj = ntraj
@@ -267,9 +292,11 @@ class _MC_class():
         #sol.col_which = qtf90.qutraj_run.col_which-1
         sol.col_times, sol.col_which = self.get_collapses(ntraj)
         if (odeconfig.e_num==0):
-            sol.states = self.get_states(size(odeconfig.tlist),ntraj)
+            sol.states = self.get_states(len(odeconfig.tlist),ntraj)
         else:
-            sol.expect = self.get_expect(size(odeconfig.tlist),ntraj)
+            sol.expect = self.get_expect(len(odeconfig.tlist),ntraj)
+        if (self.calc_entropy):
+            sol.entropy = self.get_entropy(len(odeconfig.tlist))
         if (not self.serial_run):
             # put to queue
             queue.put(sol)
@@ -346,6 +373,14 @@ class _MC_class():
                 expect[:,j,:] = qtf90.qutraj_run.sol[j,:,:,0]
         return expect
 
+    def get_entropy(self,nstep):
+        if (not self.calc_entropy):
+            print 'get_entropy: calc_entropy=False. Aborting.'
+            return
+        entropy = np.array([0.]*nstep)
+        entropy[:] = qtf90.qutraj_run.reduced_state_entropy[:]
+        return entropy
+
     def finalize():
         # not in use...
         qtf90.qutraj_run.finalize_work()
@@ -362,6 +397,8 @@ def _gather(sols):
     sol.col_which[0:sols[0].ntraj] = sols[0].col_which
     sol.states = np.array(sols[0].states)
     sol.expect = np.array(sols[0].expect)
+    if (hasattr(sols[0],'entropy')):
+        sol.entropy = np.array(sols[0].entropy)
     sofar = 0
     for j in range(1,len(sols)):
         sofar = sofar + sols[j-1].ntraj
@@ -370,13 +407,13 @@ def _gather(sols):
         sol.col_which[sofar:sofar+sols[j].ntraj] = (
                 sols[j].col_which)
         if (odeconfig.e_num==0):
-            if (odeoptions.options.mc_avg):
+            if (odeconfig.options.mc_avg):
                 # collect states, averaged over trajectories
                 sol.states += np.array(sols[j].states)
             else:
                 # collect states, all trajectories
-                sol.states = np.concatenate([sol.states,
-                    np.array(sols[j].states)])
+                sol.states = np.vstack((sol.states,
+                    np.array(sols[j].states)))
         else:
             if (odeconfig.options.mc_avg):
                 # collect expectation values, averaged
@@ -384,16 +421,26 @@ def _gather(sols):
                     sol.expect[i] += np.array(sols[j].expect[i])
             else:
                 # collect expectation values, all trajectories
-                sol.expect = np.concatenate([sol.expect,
-                    np.array(sols[j].expect)])
+                sol.expect = np.vstack((sol.expect,
+                    np.array(sols[j].expect)))
+        if (hasattr(sols[j],'entropy')):
+            if (odeconfig.options.mc_avg):
+                # collect entropy values, averaged
+                sol.entropy += np.array(sols[j].entropy)
+            else:
+                # collect entropy values, all trajectories
+                sol.entropy = np.vstack((sol.entropy,
+                    np.array(sols[j].entropy)))
     if (odeconfig.options.mc_avg):
         if (odeconfig.e_num==0):
             sol.states = sol.states/len(sols)
         else:
             sol.expect = sol.expect/len(sols)
+        if (hasattr(sols[0],'entropy')):
+            sol.entropy = sol.entropy/len(sols)
     # convert to list/array to be consistent with qutip mcsolve
     sol.states = list(sol.states)
-    sol.expect = list(sol.expect)
+    #sol.expect = list(sol.expect)
     return sol
 
 #
@@ -409,6 +456,12 @@ def _init_psi0():
     #Of = _qobj_to_fortranfull(odeconfig.psi0)
     Of = _complexarray_to_fortran(odeconfig.psi0)
     qtf90.qutraj_run.init_psi0(Of,size(Of))
+
+def _init_ptrace_stuff(sel):
+    psi0 = Qobj(odeconfig.psi0,
+            dims=odeconfig.psi0_dims,shape=odeconfig.psi0_shape)
+    qtf90.qutraj_run.init_ptrace_stuff(odeconfig.psi0_dims[0],
+            np.array(sel)+1,psi0.ptrace(sel).shape[0])
 
 def _init_hamilt():
     # construct effective non-Hermitian Hamiltonian
@@ -438,7 +491,8 @@ def _init_c_ops():
 
 def _init_e_ops():
     d = size(odeconfig.psi0)
-    n = odeconfig.e_num
+    #n = odeconfig.e_num
+    n = len(odeconfig.e_ops_data)
     first = True
     for i in range(n):
         #Of = _qobj_to_fortrancsr(e_ops[i])
@@ -454,7 +508,7 @@ def _init_e_ops():
 #
 
 def _realarray_to_fortran(a):
-    datad = np.asfortranarray(np.array(a,dtype=wpr))
+    datad = np.array(a,dtype=wpr)
     return datad
 
 def _complexarray_to_fortran(a):

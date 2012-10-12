@@ -11,6 +11,7 @@ module qutraj_run
   use qutraj_general
   use qutraj_hilbert
   use qutraj_evolve
+  use qutraj_linalg
   use mt19937
   use linked_list
 
@@ -77,6 +78,13 @@ module qutraj_run
   ! diffusive unravellings to be implemented
   integer :: unravel_type = 2
 
+  ! Stuff needed for partial trace
+  integer, allocatable :: psi0_dims1(:),ptrace_sel(:)
+  integer :: rho_reduced_dim=0
+  ! Calculate average entropy of reduced state over trajectories?
+  logical :: calc_entropy = .false.
+  real(wp), allocatable :: reduced_state_entropy(:)
+
   !
   ! Interfaces
   !
@@ -103,6 +111,21 @@ module qutraj_run
     complex(wp), intent(in) :: val(n)
     integer, intent(in) :: n
     call new(psi0,val)
+  end subroutine
+
+  subroutine init_ptrace_stuff(dims,sel,reduced_dim,ndims,nsel)
+    integer, intent(in) :: dims(ndims),sel(nsel),reduced_dim
+    integer, intent(in) :: ndims, nsel
+    !complex(wp), allocatable :: rho(:,:)
+    !real(wp) :: S
+    call new(psi0_dims1,dims)
+    call new(ptrace_sel,sel)
+    rho_reduced_dim = reduced_dim
+    !allocate(rho(rho_reduced_dim,rho_reduced_dim))
+    !call ptrace_pure(psi0,rho,ptrace_sel,psi0_dims1)
+    !write(*,*) rho
+    !call entropy(rho,S)
+    !write(*,*) S
   end subroutine
 
   subroutine init_hamiltonian(val,col,ptr,m,k,nnz,nptr)
@@ -252,17 +275,16 @@ module qutraj_run
   ! Evolution
   !
 
-  subroutine evolve(states,instanceno,rngseed)
-    ! Save states or expectation values?
-    logical, intent(in) :: states
+  subroutine evolve(instanceno,rngseed)
     ! What process # am I?
     integer, intent(in) :: instanceno,rngseed
     double precision :: t, tout
     double complex, allocatable :: y(:),y_tmp(:),rho(:,:)
+    logical :: states
     type(operat) :: rho_sparse
     integer :: istat=0,istat2=0,traj,progress
     integer :: i,j,l,m,n
-    real(wp) :: mu,nu
+    real(wp) :: mu,nu,S
     real(wp), allocatable :: p(:)
     ! ITASK  = An index specifying the task to be performed.
     !          Input only.  ITASK has the following values and meanings.
@@ -286,6 +308,13 @@ module qutraj_run
     !          TCRIT, in which case answers at T = TOUT are returned 
     !          first).
 
+    ! States or expectation values
+    !if (n_e_ops == 0 .and. .not.calc_entropy) then
+    if (n_e_ops == 0) then
+      states = .true.
+    else
+      states = .false.
+    endif
     ! Allocate solution array
     if (allocated(sol)) then
       deallocate(sol,stat=istat)
@@ -299,8 +328,16 @@ module qutraj_run
           call new(sol_rho,size(tlist))
           call new(rho_sparse,1,1)
         else
-          allocate(sol(1,size(tlist),ode%neq,ode%neq),stat=istat)
-          allocate(rho(ode%neq,ode%neq),stat=istat2)
+          if (rho_reduced_dim == 0) then
+            ! Not doing partial trace
+            allocate(sol(1,size(tlist),ode%neq,ode%neq),stat=istat)
+            allocate(rho(ode%neq,ode%neq),stat=istat2)
+          else
+            ! Doing partial trace
+            allocate(sol(1,size(tlist),&
+              rho_reduced_dim,rho_reduced_dim),stat=istat)
+            allocate(rho(rho_reduced_dim,rho_reduced_dim),stat=istat2)
+          endif
           sol = (0.,0.)
           rho = (0.,0.)
         endif
@@ -308,7 +345,7 @@ module qutraj_run
         allocate(sol(1,ntraj,size(tlist),ode%neq),stat=istat)
         sol = (0.,0.)
       endif
-    else 
+    elseif (n_e_ops>0) then
       if (mc_avg) then
         allocate(sol(n_e_ops,1,size(tlist),1),stat=istat)
         sol = (0.,0.)
@@ -320,6 +357,14 @@ module qutraj_run
     if (istat.ne.0) call fatal_error("evolve: could not allocate.",istat)
     if (istat2.ne.0) call fatal_error("evolve: could not allocate.",&
       istat2)
+    ! Array for average entropy
+    if (calc_entropy) then
+      if (.not.allocated(rho)) then
+        allocate(rho(rho_reduced_dim,rho_reduced_dim),stat=istat2)
+      endif
+      call new(reduced_state_entropy,size(tlist))
+      reduced_state_entropy = 0.
+    endif
 
     ! Allocate linked lists for collapse times and operators
     if (allocated(ll_col_times)) then
@@ -399,7 +444,11 @@ module qutraj_run
         end select
         y_tmp = y
         call normalize(y_tmp)
+
         ! Compute solution
+        if (rho_reduced_dim.ne.0) then
+           call ptrace_pure(y_tmp,rho,ptrace_sel,psi0_dims1)
+        endif
         if (states) then
           if (mc_avg) then
             ! construct density matrix
@@ -411,7 +460,11 @@ module qutraj_run
                 sol_rho(i) = sol_rho(i) + rho_sparse
               endif
             else
-              call densitymatrix_dense(y_tmp,rho)
+              if (rho_reduced_dim == 0) then
+                call densitymatrix_dense(y_tmp,rho)
+              !else
+              !  call ptrace_pure(y_tmp,rho,ptrace_sel,psi0_dims1)
+              endif
               sol(1,i,:,:) = sol(1,i,:,:) + rho
             endif
           else
@@ -428,6 +481,10 @@ module qutraj_run
             enddo
           endif
         endif
+        if (calc_entropy) then
+          call entropy(rho,S)
+          reduced_state_entropy(i) = reduced_state_entropy(i) + S
+        endif
         ! End time loop
       enddo
       ! Indicate progress
@@ -443,14 +500,20 @@ module qutraj_run
         do j=1,size(sol_rho)
           sol_rho(j) = (1._wp/ntraj)*sol_rho(j)
         enddo
-      else
+      elseif (allocated(sol)) then
         sol = (1._wp/ntraj)*sol
+      endif
+      if (calc_entropy) then
+        reduced_state_entropy = (1._wp/ntraj)*reduced_state_entropy
       endif
     endif
     ! Deallocate
     call finalize(y)
     call finalize(y_tmp)
     call finalize(p)
+    if (allocated(rho)) then
+      deallocate(rho)
+    endif
   end subroutine
 
   !

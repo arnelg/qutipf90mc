@@ -236,16 +236,6 @@ module qutraj_hilbert
   ! State/operator arithmetic
   !
 
-  !subroutine tidy(a)
-  !! This isn't correct
-  !  type(operat), intent(inout) :: a
-  !  type(operat) :: b
-  !  nzmax = count(abs(a%a).ge.epsi)
-  !  a%pb(size(a%pb)) = nzmax+1
-  !  call new(b,a%a(1:nzmax),a%ia1(1:nzmax),a%pb,a%m,a%k)
-  !  a = b
-  !end subroutine
-
   subroutine operat_operat_eq(this,a)
     type(operat), intent(out) :: this
     type(operat), intent(in) :: a
@@ -398,10 +388,11 @@ module qutraj_hilbert
   end function
 
   !
-  ! Density matrix from pure state
+  ! Misc.
   !
 
   subroutine densitymatrix_dense(psi,rho)
+    ! Dense density matrix from pure state
     complex(wp), intent(in) :: psi(:)
     complex(wp), intent(out) :: rho(:,:)
     complex(wp), allocatable :: tmp(:,:)
@@ -412,10 +403,48 @@ module qutraj_hilbert
   end subroutine
 
   subroutine densitymatrix_sparse(psi,rho)
+    ! Sparse density matrix from pure state
     complex(wp), intent(in) :: psi(:)
     type(operat), intent(out) :: rho
     type(operat) :: a,b
     rho = ket_to_operat(psi)*bra_to_operat(conjg(psi))
+  end subroutine
+
+  subroutine ptrace_pure(psi,rho,sel,dims)
+    ! Partial trace over pure state
+    ! Under construction
+    ! Currently only correct for sel = (/1,2,../)
+    ! i.e. no permutations
+    complex(wp), intent(in) :: psi(:)
+    integer, intent(in) :: sel(:),dims(:)
+    complex(wp), intent(out) :: rho(:,:)
+    complex(wp), allocatable :: a(:,:)
+    integer :: m,n,prod_dims_sel,prod_dims_rest
+    integer :: i,j,istat
+    logical :: insel
+
+    m = 1
+    n = 1
+    prod_dims_sel = 1
+    prod_dims_rest = 1
+    do i=1,size(dims)
+      n=n*dims(i)
+      insel = .false.
+      do j=1,size(sel)
+        if (i==sel(j)) then
+          m=m*dims(i)
+          prod_dims_sel = prod_dims_sel*dims(i)
+          insel=.true.
+        endif
+      enddo
+      if (.not.insel) then
+        prod_dims_rest = prod_dims_rest*dims(i)
+      endif
+    enddo
+    allocate(a(prod_dims_rest,prod_dims_sel),stat=istat)
+    a = reshape(psi,(/prod_dims_rest,prod_dims_sel/))
+    !allocate(rho(prod_dims_sel,prod_dims_sel),stat=istat)
+    rho = matmul(transpose(conjg(a)),a)
   end subroutine
 
   !
