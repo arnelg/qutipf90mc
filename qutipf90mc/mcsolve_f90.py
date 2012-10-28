@@ -37,6 +37,10 @@ def mcsolve_f90(H,psi0,tlist,c_ops,e_ops,ntraj=500,
         If averaged density matrices are returned, they will be stored as sparse (Compressed Row Format) matrices during computation if sparse_dms = True (default), and dense matrices otherwise. Dense matrices might be preferable for smaller systems.
     serial : boolean
         If True (default is False) the solver will not make use of the multiprocessing module, and simply run in serial.
+    ptrace_sel: list
+        This optional argument specifies a list of components to keep when returning a partially traced density matrix. This can be convenient for large systems where memory becomes a problem, but you are only interested in parts of the density matrix.
+    calc_entropy : boolean
+        If ptrace_sel is specified, calc_entropy=True will have the solver return the averaged entropy over trajectories in results.entropy. This can be interpreted as a measure of entanglement. See Phys. Rev. Lett. 93, 120408 (2004), Phys. Rev. A 86, 022310 (2012).
 
     Returns
     -------
