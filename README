@@ -19,7 +19,7 @@ Dependencies:
 
 - QuTiP v.2.1.0 or higher and all its dependencies.
 - A fortran compiler and the BLAS library (BLAS comes with many fortran compilers, such as gfortran).
-
+- gfortran must be version 4.6 or higher.
 
 Installation:
 
