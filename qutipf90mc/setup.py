@@ -28,7 +28,7 @@ def configuration(parent_package='',top_path=None):
     # LAPACK?
     #
 
-    lapack_opt = get_info('lapack_opt',notfound_action=1)
+    lapack_opt = get_info('lapack',notfound_action=1)
 	
     if not lapack_opt:
         #raise NotFoundError,'no lapack resources found'
@@ -44,7 +44,7 @@ def configuration(parent_package='',top_path=None):
     #
 
     if not lapack_opt:
-        blas_opt = get_info('blas_opt',notfound_action=2)
+        blas_opt = get_info('blas',notfound_action=2)
     else:
         blas_opt = lapack_opt
 

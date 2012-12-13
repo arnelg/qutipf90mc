@@ -8,3 +8,4 @@ fort.8
 src/old/
 *.sw*
 *.backup
+.DS_Store
