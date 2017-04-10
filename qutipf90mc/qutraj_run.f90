@@ -26,7 +26,7 @@ module qutraj_run
 
   !type(operat) :: hamilt
   !type(operat), allocatable :: c_ops(:), e_ops(:)
-  !type(odeoptions) :: ode
+  !type(options) :: ode
 
   real(wp), allocatable :: tlist(:)
   complex(wp), allocatable :: psi0(:)
@@ -36,7 +36,8 @@ module qutraj_run
   !real(wp) :: norm_tol = 0.001
   integer :: n_c_ops = 0
   integer :: n_e_ops = 0
-  logical :: mc_avg = .true.
+  logical :: average_states = .true.
+  logical :: average_expect = .true.
 
   ! Optional ode options, 0 means use default values
   integer :: order=0,nsteps=0
@@ -90,7 +91,7 @@ module qutraj_run
   !
 
   interface finalize
-    module procedure odeoptions_finalize
+    module procedure options_finalize
   end interface
 
   contains
@@ -178,7 +179,7 @@ module qutraj_run
     call new(e_ops(i),val,col,ptr,m,k)
   end subroutine
 
-  subroutine init_odedata(neq,atol,rtol,mf,norm_steps,norm_tol,&
+  subroutine init_result(neq,atol,rtol,mf,norm_steps,norm_tol,&
       lzw,lrw,liw,ml,mu,natol,nrtol)
     use qutraj_precision
     integer, intent(in) :: neq
@@ -187,7 +188,7 @@ module qutraj_run
     double precision, optional :: atol(1),rtol(1)
     real(wp), optional :: norm_tol
     integer, intent(in), optional :: ml,mu
-    integer :: istat
+    !integer :: istat
 
     ode%neq = neq
     if (lzw.ne.0) then
@@ -275,15 +276,16 @@ module qutraj_run
   ! Evolution
   !
 
-  subroutine evolve(instanceno,rngseed)
+  subroutine evolve(instanceno, rngseed, show_progress)
     ! What process # am I?
-    integer, intent(in) :: instanceno,rngseed
+    integer, intent(in) :: instanceno, rngseed, show_progress
     double precision :: t, tout
     double complex, allocatable :: y(:),y_tmp(:),rho(:,:)
     logical :: states
     type(operat) :: rho_sparse
     integer :: istat=0,istat2=0,traj,progress
-    integer :: i,j,l,m,n
+    integer :: i,j,l
+    !integer :: m,n
     real(wp) :: mu,nu,S
     real(wp), allocatable :: p(:)
     ! ITASK  = An index specifying the task to be performed.
@@ -322,8 +324,9 @@ module qutraj_run
         call error("evolve: could not deallocate.",istat)
       endif
     endif
+
     if (states) then
-      if (mc_avg) then
+      if (average_states) then
         if (rho_return_sparse) then
           call new(sol_rho,size(tlist))
           call new(rho_sparse,1,1)
@@ -331,36 +334,43 @@ module qutraj_run
           if (rho_reduced_dim == 0) then
             ! Not doing partial trace
             allocate(sol(1,size(tlist),ode%neq,ode%neq),stat=istat)
-            allocate(rho(ode%neq,ode%neq),stat=istat2)
+            allocate(rho(ode%neq,ode%neq), stat=istat2)
           else
             ! Doing partial trace
             allocate(sol(1,size(tlist),&
               rho_reduced_dim,rho_reduced_dim),stat=istat)
-            allocate(rho(rho_reduced_dim,rho_reduced_dim),stat=istat2)
+            allocate(rho(rho_reduced_dim,rho_reduced_dim), stat=istat2)
           endif
           sol = (0.,0.)
           rho = (0.,0.)
         endif
       else
-        allocate(sol(1,ntraj,size(tlist),ode%neq),stat=istat)
+        allocate(sol(1,ntraj,size(tlist),ode%neq), stat=istat)
         sol = (0.,0.)
       endif
+    
     elseif (n_e_ops>0) then
-      if (mc_avg) then
-        allocate(sol(n_e_ops,1,size(tlist),1),stat=istat)
+      if (average_expect) then
+        allocate(sol(n_e_ops,1,size(tlist),1), stat=istat)
         sol = (0.,0.)
       else
-        allocate(sol(n_e_ops,ntraj,size(tlist),1),stat=istat)
+        allocate(sol(n_e_ops,ntraj,size(tlist),1), stat=istat)
         sol = (0.,0.)
       endif
     endif
-    if (istat.ne.0) call fatal_error("evolve: could not allocate.",istat)
-    if (istat2.ne.0) call fatal_error("evolve: could not allocate.",&
-      istat2)
+
+    if (istat.ne.0) then
+      call fatal_error("evolve: could not allocate sol.", istat)
+    endif
+ 
+    if (istat2.ne.0) then
+      call fatal_error("evolve: could not allocate rho.", istat2)
+    endif
+
     ! Array for average entropy
     if (calc_entropy) then
       if (.not.allocated(rho)) then
-        allocate(rho(rho_reduced_dim,rho_reduced_dim),stat=istat2)
+        allocate(rho(rho_reduced_dim, rho_reduced_dim), stat=istat2)
       endif
       call new(reduced_state_entropy,size(tlist))
       reduced_state_entropy = 0.
@@ -368,21 +378,28 @@ module qutraj_run
 
     ! Allocate linked lists for collapse times and operators
     if (allocated(ll_col_times)) then
-      deallocate(ll_col_times,stat=istat)
+      deallocate(ll_col_times, stat=istat)
       if (istat.ne.0) then
-        call error("evolve: could not deallocate.",istat)
+        call error("evolve: could not deallocate ll_col_times.", istat)
       endif
     endif
-    if (allocated(ll_col_times)) then
-      deallocate(ll_col_times,stat=istat)
+
+    allocate(ll_col_times(ntraj), stat=istat)
+    if (istat.ne.0) then
+      call fatal_error("evolve: could not allocate ll_col_times.", istat)
+    endif
+
+    if (allocated(ll_col_which)) then
+      deallocate(ll_col_which, stat=istat)
       if (istat.ne.0) then
-        call error("evolve: could not deallocate.",istat)
+        call fatal_error("evolve: could not deallocate ll_col_which.", istat)
       endif
     endif
-    allocate(ll_col_times(ntraj),stat=istat)
-    if (istat.ne.0) call fatal_error("evolve: could not allocate.",istat)
-    allocate(ll_col_which(ntraj),stat=istat)
-    if (istat.ne.0) call fatal_error("evolve: could not allocate.",istat)
+
+    allocate(ll_col_which(ntraj), stat=istat)
+    if (istat.ne.0) then
+      call fatal_error("evolve: could not allocate ll_col_which.", istat)
+    endif
 
     ! Allocate work arrays
     call new(y,ode%neq)
@@ -450,7 +467,7 @@ module qutraj_run
            call ptrace_pure(y_tmp,rho,ptrace_sel,psi0_dims1)
         endif
         if (states) then
-          if (mc_avg) then
+          if (average_states) then
             ! construct density matrix
             if (rho_return_sparse) then
               call densitymatrix_sparse(y_tmp,rho_sparse)
@@ -470,8 +487,9 @@ module qutraj_run
           else
             sol(1,traj,i,:) = y_tmp
           endif
+        
         else
-          if (mc_avg) then
+          if (average_expect) then
             do l=1,n_e_ops
               sol(l,1,i,1) = sol(l,1,i,1)+braket(y_tmp,e_ops(l)*y_tmp)
             enddo
@@ -488,25 +506,27 @@ module qutraj_run
         ! End time loop
       enddo
       ! Indicate progress
-      if (instanceno == 1 .and. traj.ge.progress*ntraj/10.0) then
+      if (show_progress == 1 .and. instanceno == 1 .and. traj.ge.progress*ntraj/10.0) then
         write(*,*) "progress of process 1: ", progress*10, "%"
         progress=progress+1
       endif
       ! End loop over trajectories
     enddo
     ! Normalize
-    if (mc_avg) then
+    if (average_states) then
       if (states .and. rho_return_sparse) then
         do j=1,size(sol_rho)
           sol_rho(j) = (1._wp/ntraj)*sol_rho(j)
         enddo
-      elseif (allocated(sol)) then
-        sol = (1._wp/ntraj)*sol
-      endif
-      if (calc_entropy) then
-        reduced_state_entropy = (1._wp/ntraj)*reduced_state_entropy
       endif
     endif
+    if (allocated(sol) .and. average_expect) then
+        sol = (1._wp/ntraj)*sol
+    endif
+    if (calc_entropy .and. (average_states .or. average_expect)) then
+        reduced_state_entropy = (1._wp/ntraj)*reduced_state_entropy
+    endif
+    
     ! Deallocate
     call finalize(y)
     call finalize(y_tmp)
@@ -522,43 +542,43 @@ module qutraj_run
 
   ! Deallocate stuff
 
-  subroutine odeoptions_finalize(this)
-    type(odeoptions), intent(inout) :: this
+  subroutine options_finalize(this)
+    type(options), intent(inout) :: this
     integer :: istat
     if (allocated(this%zwork)) then
       deallocate(this%zwork,stat=istat)
       if (istat.ne.0) then
-        call error("odeoptions_finalize: could not deallocate.",istat)
+        call error("options_finalize: could not deallocate.",istat)
       endif
     endif
     if (allocated(this%rwork)) then
       deallocate(this%rwork,stat=istat)
       if (istat.ne.0) then
-        call error("odeoptions_finalize: could not deallocate.",istat)
+        call error("options_finalize: could not deallocate.",istat)
       endif
     endif
     if (allocated(this%iwork)) then
       deallocate(this%iwork,stat=istat)
       if (istat.ne.0) then
-        call error("odeoptions_finalize: could not deallocate.",istat)
+        call error("options_finalize: could not deallocate.",istat)
       endif
     endif
     if (allocated(this%atol)) then
       deallocate(this%atol,stat=istat)
       if (istat.ne.0) then
-        call error("odeoptions_finalize: could not deallocate.",istat)
+        call error("options_finalize: could not deallocate.",istat)
       endif
     endif
     if (allocated(this%rtol)) then
       deallocate(this%rtol,stat=istat)
       if (istat.ne.0) then
-        call error("odeoptions_finalize: could not deallocate.",istat)
+        call error("options_finalize: could not deallocate.",istat)
       endif
     endif
   end subroutine
 
   subroutine finalize_work
-    integer :: istat=0
+    !integer :: istat=0
     call finalize(psi0)
     call finalize(hamilt)
     call finalize(c_ops)

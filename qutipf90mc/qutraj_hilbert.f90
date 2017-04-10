@@ -164,7 +164,7 @@ module qutraj_hilbert
     type(operat), intent(out) :: this
     complex(wp), intent(in) :: val(:)
     integer, intent(in) :: col(:),ptr(:)
-    integer :: i
+    ! integer :: i
     if (size(val)==0) then
       call operat_init(this,1,1)
       this%m = 1
@@ -406,7 +406,7 @@ module qutraj_hilbert
     ! Sparse density matrix from pure state
     complex(wp), intent(in) :: psi(:)
     type(operat), intent(out) :: rho
-    type(operat) :: a,b
+    ! type(operat) :: a,b
     rho = ket_to_operat(psi)*bra_to_operat(conjg(psi))
   end subroutine
 
@@ -458,8 +458,9 @@ module qutraj_hilbert
     complex(KIND=wp) , dimension(:), intent(in) :: x
     complex(KIND=wp) , dimension(:), intent(out) :: y
     integer, intent(out) :: ierr
-    integer :: m,n,base,ofs,i,pntr
-    character :: diag,type,part
+    integer :: m,n,ofs,i,pntr
+    ! integer :: base
+    ! character :: diag,type,part
     ierr = -1
     m = size(y)
     n = size(x)
@@ -773,7 +774,7 @@ subroutine aplb ( nrow, ncol, job, a, ja, ia, b, jb, ib, c, jc, ic, nzmax, &
   end do
 
   return
-end
+end subroutine
 subroutine amub ( nrow, ncol, job, a, ja, ia, b, jb, ib, c, jc, ic, nzmax, &
   iw, ierr )
   ! Aadapted from sparsekit
@@ -915,7 +916,7 @@ subroutine amub ( nrow, ncol, job, a, ja, ia, b, jb, ib, c, jc, ic, nzmax, &
   end do
 
   return
-end
+end subroutine
 
 
 subroutine dnscsr ( nrow, ncol, nzmax, dns, ndns, a, ja, ia, ierr )
@@ -1008,6 +1009,6 @@ subroutine dnscsr ( nrow, ncol, nzmax, dns, ndns, a, ja, ia, ierr )
   end do
 
   return
-end
+end subroutine
 
 end module

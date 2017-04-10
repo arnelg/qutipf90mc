@@ -11,7 +11,7 @@ module qutraj_evolve
   ! Types
   !
 
-  type odeoptions
+  type options
     ! No. of ODES
     integer :: neq=1
     ! work array zwork should have length 15*neq for non-stiff
@@ -45,7 +45,7 @@ module qutraj_evolve
 
   type(operat) :: hamilt
   type(operat), allocatable :: c_ops(:), e_ops(:)
-  type(odeoptions) :: ode
+  type(options) :: ode
 
   ! Hermitian conjugated operators
   type(operat), allocatable :: c_ops_hc(:)
@@ -59,7 +59,7 @@ module qutraj_evolve
   subroutine evolve_nocollapse(t,tout,y,y_tmp,ode)
     double complex, intent(inout) :: y(:),y_tmp(:)
     double precision, intent(inout) :: t, tout
-    type(odeoptions) :: ode
+    type(options) :: ode
 
     ! integrate up to tout without overshooting
     ode%rwork(1) = tout
@@ -86,12 +86,12 @@ module qutraj_evolve
     real(wp), intent(inout) :: mu,nu
     type(linkedlist_real), intent(inout) :: ll_col_times
     type(linkedlist_int), intent(inout) :: ll_col_which
-    type(odeoptions) :: ode
+    type(options) :: ode
     double precision :: t_prev, t_final, t_guess
     integer :: j,k
     integer :: cnt
     real(wp) :: norm2_psi,norm2_prev,norm2_guess,sump
-    logical, save :: first = .true.
+    ! logical, save :: first = .true.
 
     ode%rwork(1) = tout
     norm2_psi = abs(braket(y,y))
@@ -173,12 +173,12 @@ module qutraj_evolve
 
   subroutine nojump(y,t,tout,itask,ode)
     ! evolve with effective hamiltonian
-    type(odeoptions), intent(in) :: ode
+    type(options), intent(in) :: ode
     double complex, intent(inout) :: y(:)
     double precision, intent(inout) :: t
     double precision, intent(in) :: tout
     integer, intent(in) :: itask
-    integer :: istat
+    !integer :: istat
 
     call zvode(rhs,ode%neq,y,t,tout,ode%itol,ode%rtol,ode%atol,&
       itask,ode%istate,ode%iopt,ode%zwork,ode%lzw,ode%rwork,ode%lrw,&
@@ -203,7 +203,7 @@ module qutraj_evolve
     real(wp) :: t
     integer :: neq,ml,mu,nrpd,ipar
     return
-  end
+  end subroutine
 
   !
   ! Diffusive unravelling evolution
