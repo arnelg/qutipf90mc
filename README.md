@@ -62,7 +62,10 @@ For more info
 help(qutipf90mc.mcsolve_f90)
 ```
 
+## License
+
+You are free to use this software, with or without modification, provided that the conditions listed in the LICENSE.txt file are satisfied.
+
 ## Contributors
 
-[Arne Grimsmo](https://github.com/arnelg) Université de Sherbrooke
-
+A. L. Grismmo, A. Pitchford, C. Granade, P. D. Nation, and J. R. Johansson
