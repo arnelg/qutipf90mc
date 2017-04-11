@@ -57,6 +57,11 @@ system with Hilbert space dimension `dim`, and `ntraj` trajectories, run on a si
 qutipf90mc.compare.run(dim,ntraj)
 ```
 
+For more info
+```python
+help(qutipf90mc.mcsolve_f90)
+```
+
 ## Contributors
 
 [Arne Grimsmo](https://github.com/arnelg) Université de Sherbrooke
