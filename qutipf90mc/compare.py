@@ -40,7 +40,8 @@ def run(neq=10,ntraj=100,solver='both',ncpus=1):
 
     if (solver=='mc' or solver=='both'):
         start_time = time.time()
-        sol_mc = qt.mcsolve(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts)
+        sol_mc = qt.mcsolve(H,psi0,tlist,c_ops,e_ops,ntraj=ntraj,options=opts,
+                progress_bar=False)
         mc_time = time.time()-start_time
         print("mcsolve solutiton took", mc_time, "s")
 
