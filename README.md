@@ -6,7 +6,7 @@ the [QuTiP](https://github.com/qutip/qutip)  python package.
 
 ## Features:
 
-* Usage (almost, see missing features) identical to QuTiP's mcsolve
+* Usage (almost, see missing features) identical to QuTiP's `mcsolve`
 * Uses sparse (compressed row format) matrices for operators
 * Uses zvode to integrate in time
 * Time evolution algorithm from QuTiP to find correct times for jumps.
@@ -68,4 +68,4 @@ You are free to use this software, with or without modification, provided that t
 
 ## Contributors
 
-A. L. Grismmo, A. Pitchford, C. Granade, P. D. Nation, and J. R. Johansson
+A. L. Grismmo, P. D. Nation, and J. R. Johansson
