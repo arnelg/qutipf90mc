@@ -1,10 +1,13 @@
-*~
 *.out
 fort.8
 *.mod
 *.o
 *.so
 *.pyc
-src/old/
-*.sw*
-*.backup
+
+
+# Packages
+*.egg
+*.egg-info
+dist
+build

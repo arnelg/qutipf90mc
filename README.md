@@ -1,13 +1,13 @@
 # qutipf90mc
 
-The development of a "wave-function monte carlo" solver written in Fortran 90/95, with a python interface trough f2py. The program is intended to be used with the qutip python package.
+A "wave-function monte carlo" solver written in Fortran 90/95, with a python interface trough f2py. The program is intended to be used with the qutip python package.
 
 ## Features:
 
-* Usage (almost, see missing features) identical to QuTiP v.2.1.0's mcsolve
+* Usage (almost, see missing features) identical to QuTiP's mcsolve
 * Uses sparse (compressed row format) matrices for operators
 * Uses zvode to integrate in time
-* Time evolution algorithm from QuTiP v2.1.0 to find correct times for jumps.
+* Time evolution algorithm from QuTiP to find correct times for jumps.
 * Automatic parallelization via Python's multiprocessing module.
 
 Missing features:
@@ -20,9 +20,12 @@ Dependencies:
 * QuTiP v.3.1.0 or higher
 * A fortran compiler and the BLAS library. BLAS comes with many fortran compilers, such as gfortran. Unoffifical gfortran binaries can be found here https://gcc.gnu.org/wiki/GFortranBinaries
 
+## Platforms:
+
+Has been tested on OSX with anaconda python 3.5, gfortran 6.3 and qutip
+v4.2.0.
 
 ## Installation:
-
 
 1. Download code with
 ```shell
@@ -51,3 +54,8 @@ system with Hilbert space dimension `dim`, and `ntraj` trajectories, run on a si
 ```python
 qutipf90mc.compare.run(dim,ntraj)
 ```
+
+## Contributors
+
+[Arne Grimsmo](https://github.com/arnelg) Université de Sherbrooke
+
